@@ -234,9 +234,9 @@ async def reset_command(update, context):
                        ''', (user_id, chat_id))
         conn.commit()
         
-        await update.message.reply_text("Je doel voor vandaag is gereset \n_-1 punt_", parse_mode="Markdown")
+        await update.message.reply_text("Je doel voor vandaag is gereset 🧙‍♂️\n_-1 punt_", parse_mode="Markdown")
     else:
-        await update.message.reply_text("Je hebt geen onvoltooid doel om te resetten (/stats).")
+        await update.message.reply_text("Je hebt geen onvoltooid doel om te resetten 🧙‍♂️ \n_Zie /stats voor je dagdoelstatus_).", parse_mode="Markdown")
         
 async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     challenger = update.effective_user
