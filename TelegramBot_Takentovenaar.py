@@ -40,7 +40,7 @@ try:
     FROM information_schema.columns 
     WHERE table_name='{table_name}';
 """)
-        return [info[1] for info in cursor.fetchall()]
+        return [info[0] for info in cursor.fetchall()]
     
     # Function to add missing columns
     def add_missing_columns(cursor, table_name, desired_columns):
@@ -97,18 +97,23 @@ except Exception as e:
 
 # Storing all column names of the users table in columns variable (eg: 'today_goal_text') 
 # Fetch column names safely
-cursor.execute("""
-    SELECT column_name 
-    FROM information_schema.columns 
-    WHERE table_name = 'users';
-""")
-columns_result = cursor.fetchall()
+try:    
+    cursor.execute("""
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'users';
+    """)
+    columns_result = cursor.fetchall()
 
-if columns_result:
-    columns = [column[0] for column in columns_result]  # Adjust if only one column per result
-else:
-    print("No columns found for the users table.")
-    columns = []
+    if columns_result:
+        columns = [column[0] for column in columns_result]  # Adjust if only one column per result
+        print("Columns result:", columns_result)  # Debugging
+    else:
+        print("No columns found for the users table.")
+        columns = []
+except Exception as e:
+    print(f"Error fetching column date: {e}")
+
 
 
 
@@ -702,10 +707,12 @@ def main():
     # Handler for edited messages
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
     
+    job_queue = application.job_queue  # Initialize the JobQueue    
     # Start the nightly goal_status reset task
     application.job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=1, minute=0))
+
     
-    # Start the botF
+    # Start the bot
     application.run_polling()
 
 if __name__ == '__main__':
