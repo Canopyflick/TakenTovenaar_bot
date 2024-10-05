@@ -380,7 +380,7 @@ async def confirm_wipe(update, context):
 def update_user_goal(user_id, chat_id, goal_text):
     cursor.execute('''
     INSERT INTO users (user_id, chat_id, today_goal_text)
-    VALUES (%ss, %ss, %ss)
+    VALUES (%s, %s, %s)
     ON CONFLICT (user_id, chat_id) DO UPDATE SET
     today_goal_text = EXCLUDED.today_goal_text
 ''', (user_id, chat_id, goal_text))
