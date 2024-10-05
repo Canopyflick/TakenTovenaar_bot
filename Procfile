@@ -1,2 +1,1 @@
-worker: python 
-TelegramBot_Takentovenaar.py
+worker: python TelegramBot_Takentovenaar.py
