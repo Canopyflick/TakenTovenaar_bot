@@ -4,27 +4,42 @@ from tempfile import TemporaryFile
 from telegram import User, Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
 from openai import OpenAI
-import sqlite3
 import datetime
 import asyncio
 import re
 import json
-
+import psycopg2
 
 
 
 # Initialize the OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-# Database connection
-conn = sqlite3.connect('user_goals.db')
+# For local development
+LOCAL_DB_URL = "postgresql://username:password@localhost/your_database_name"
+
+# Use environment variable for Heroku, fallback to local for development
+DATABASE_URL = os.getenv('DATABASE_URL', LOCAL_DB_URL)
+
+# Connect to the PostgreSQL database
+# Use SSL only on Heroku
+if 'DATABASE_URL' in os.environ:
+    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+else:
+    conn = psycopg2.connect(DATABASE_URL)  # For local development, no SSL required
+
 cursor = conn.cursor()
+
 
 # Create the users table if it doesn't exists (for new users) and check if there's newly added columns (for existing users)
 try:
     # Function to get existing columns
     def get_existing_columns(cursor, table_name):
-        cursor.execute(f"PRAGMA table_info({table_name});")
+        cursor.execute(f"""
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name='{table_name}';
+""")
         return [info[1] for info in cursor.fetchall()]
     
     # Function to add missing columns
@@ -45,7 +60,7 @@ try:
         'today_goal_status': "TEXT DEFAULT 'not set'",
         'today_goal_text': "TEXT DEFAULT ''",
         'pending_challenge': 'TEXT DEFAULT "{}"', # Store challenges as JSON string
-        'naam': 'TEXT DEFAULT' 'Peter'
+        'first_name': 'TEXT'
         # Add any new columns here
         # 'new_column': "TEXT DEFAULT ''",
     }
@@ -55,10 +70,18 @@ try:
         CREATE TABLE IF NOT EXISTS users (
             user_id INTEGER,
             chat_id INTEGER,
+            first_name TEXT,
+            total_goals INTEGER DEFAULT 0,
+            completed_goals INTEGER DEFAULT 0,
+            score INTEGER DEFAULT 0,
+            today_goal_status TEXT DEFAULT 'not set',
+            today_goal_text TEXT DEFAULT '',
+            pending_challenge TEXT DEFAULT '{}',  
             PRIMARY KEY (user_id, chat_id)
         )
     ''')
     conn.commit()
+
 
     # Add missing columns
     add_missing_columns(cursor, 'users', desired_columns)
@@ -68,7 +91,12 @@ except Exception as e:
 
 
 # Storing all column names of the users table in columns variable (eg: 'today_goal_text') 
-cursor.execute("PRAGMA table_info(users)")
+cursor.execute("""
+    SELECT column_name 
+    FROM information_schema.columns 
+    WHERE table_name = 'users';
+""")
+
 columns = [column[1] for column in cursor.fetchall()]
 
 # Helper functions to reduce bloat/increase modularity
@@ -79,7 +107,7 @@ def fetch_goal_text(update):
     try:
         # Check if the user has a goal for today
         if has_goal_today(user_id, chat_id):
-            cursor.execute('SELECT today_goal_text FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+            cursor.execute('SELECT today_goal_text FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
             result = cursor.fetchone()
             
             if result and result[0]:
@@ -186,7 +214,7 @@ async def stats_command(update, context):
     cursor.execute('''
         SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text
         FROM users
-        WHERE user_id = ? AND chat_id = ?
+        WHERE user_id = %s AND chat_id = %s
     ''', (user_id, chat_id))
     
     result = cursor.fetchone()
@@ -198,7 +226,7 @@ async def stats_command(update, context):
         stats_message = f"*Statistieken voor {escape_markdown_v2(update.effective_user.first_name)}*\n"
         stats_message += f"🏆 Score: {score} punten\n"
         stats_message += f"🎯 Doelentotaal: {total_goals}\n"
-        stats_message += f"✅ Voltooid: {completed_goals} {escape_markdown_v2(f'({completion_rate:.1f}%)')}\n"
+        stats_message += f"✅ Voltooid: {completed_goals} {escape_markdown_v2(f'({completion_rate:.1f}%s)')}\n"
         
         # Check for the three possible goal statuses
         if today_goal_status == 'set':
@@ -230,7 +258,7 @@ async def reset_command(update, context):
                        score = score - 1,
                        today_goal_text = '',
                        total_goals = total_goals - 1
-                       WHERE user_id = ? AND chat_id = ?
+                       WHERE user_id = %s AND chat_id = %s
                        ''', (user_id, chat_id))
         conn.commit()
         
@@ -257,14 +285,14 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return  # Stop further execution if the user is challenging themselves
     
     # Check if the challenger has enough points to challenge (needs at least 1 point)
-    cursor.execute('SELECT score FROM users WHERE user_id = ? AND chat_id = ?', (challenger_id, chat_id))
+    cursor.execute('SELECT score FROM users WHERE user_id = %s AND chat_id = %s', (challenger_id, chat_id))
     score = cursor.fetchone()
     if not score or score[0] < 1:
         await update.message.reply_text(f"🚫 {challenger_name}, je hebt niet genoeg punten om iemand uit te dagen! 🧙‍♂️\nJe hebt minstens 1 punt nodig (/stats)")
         return  # Stop further execution if the challenger has fewer than 1 point
 
     # Check if the challenger has already challenged the user
-    # cursor.execute('SELECT COUNT(*) FROM challenges WHERE challenger_id = ? AND challenged_id = ? AND chat_id = ?',
+    # cursor.execute('SELECT COUNT(*) FROM challenges WHERE challenger_id = %s AND challenged_id = %s AND chat_id = %s',
     #                 (challenger_id, challenged_id, chat_id))
     # result = cursor.fetchone()
     # if result and result[0] > 0:
@@ -272,7 +300,7 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # #     return  # Stop further execution if the challenger has already challenged the user today
 
     # Check if the challenged user has a goal set for today #moet ook werken als result leeg is 
-    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = ? AND chat_id = ?', (challenged_id, chat_id))
+    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (challenged_id, chat_id))
     result = cursor.fetchone()
     if result is None:
         goal_status = 'not set'
@@ -287,7 +315,7 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"confirmation message")
 
     # Subtract 1 point from the challenger's score
-    cursor.execute('UPDATE users SET score = score - 1 WHERE user_id = ? AND chat_id = ?', (challenger_id, update.effective_chat.id))
+    cursor.execute('UPDATE users SET score = score - 1 WHERE user_id = %s AND chat_id = %s', (challenger_id, update.effective_chat.id))
     
 
 # Define a state for the conversation
@@ -310,7 +338,7 @@ async def confirm_wipe(update, context):
     user_response = update.message.text.strip().upper()
     
     if user_response == 'JA':
-        cursor.execute('DELETE FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+        cursor.execute('DELETE FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
         conn.commit()
         await update.message.reply_text("Je gegevens zijn gewist 🕳️")
     else:
@@ -322,22 +350,21 @@ async def confirm_wipe(update, context):
 # Function to update user goal text to present or past tense in the database when Doelstelling or Klaar 
 def update_user_goal(user_id, chat_id, goal_text):
     cursor.execute('''
-        INSERT INTO users (user_id, chat_id, today_goal_text)
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id, chat_id) DO UPDATE SET
-        today_goal_text = ?
-    ''', (user_id, chat_id, goal_text, goal_text))
-    conn.commit()
+    INSERT INTO users (user_id, chat_id, today_goal_text)
+    VALUES (%ss, %ss, %ss)
+    ON CONFLICT (user_id, chat_id) DO UPDATE SET
+    today_goal_text = EXCLUDED.today_goal_text
+''', (user_id, chat_id, goal_text))
     
 # Function to check if user has set a goal today
 def has_goal_today(user_id, chat_id):
-    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
     result = cursor.fetchone()
     return result and result[0] == 'set'
 
 # Function to check if user has finished a goal today
 def finished_goal_today(user_id, chat_id):
-    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
     result = cursor.fetchone()
     return result and result[0].startswith("Done")
 
@@ -381,13 +408,13 @@ async def analyze_bot_reply(update, context):
         # Handle the OpenAI response
         if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             rand_value = random.random()
-            # 4 times out of 5 (80%)
+            # 4 times out of 5 (80%s)
             if rand_value < 0.80:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
-            # once every 6 times (16,67%)
+            # once every 6 times (16,67%s)
             elif rand_value >= 0.8333:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag... STREBER! 😘")
-            # once every 30 times (3,33%)    
+            # once every 30 times (3,33%s)    
             else:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
         elif assistant_response == 'Doelstelling':
@@ -420,13 +447,13 @@ async def analyze_bot_mention(update, context):
         if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             
             rand_value = random.random()
-            # 4 times out of 5 (80%)
+            # 4 times out of 5 (80%s)
             if rand_value < 0.80:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
-            # once every 6 times (16,67%)
+            # once every 6 times (16,67%s)
             elif rand_value >= 0.8333:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag... STREBER! 😘")
-            # once every 30 times (3,33%)    
+            # once every 30 times (3,33%s)    
             else:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
         elif assistant_response == 'Doelstelling':
@@ -479,7 +506,7 @@ async def handle_regular_message(update, context):
         await context.bot.send_dice(chat_id=update.message.chat_id)
     # Nightly reset simulation
     elif user_message.isdigit() and 666:    
-        completion_time = datetime.datetime.now().strftime("%H:%M")
+        completion_time = datetime.datetime.now().strftime("%sH:%sM")
         # Reset goal status
         cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
         conn.commit()
@@ -518,7 +545,7 @@ async def handle_goal_setting(update, user_id, chat_id):
                            SET today_goal_status = 'set',
                            total_goals = total_goals + 1,
                            score = score + 1
-                           WHERE user_id = ? AND chat_id = ?
+                           WHERE user_id = %s AND chat_id = %s
                            ''', (user_id, chat_id))
             conn.commit()
         except Exception as e:
@@ -578,14 +605,14 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
             update_user_goal(user_id, chat_id, goal_text)
         
         
-            completion_time = datetime.datetime.now().strftime("%H:%M")
+            completion_time = datetime.datetime.now().strftime("%sH:%sM")
             # Update user's goal status and statistics
             cursor.execute('''
                 UPDATE users 
-                SET today_goal_status = ?, 
+                SET today_goal_status = %s, 
                     completed_goals = completed_goals + 1,
                     score = score + 4
-                WHERE user_id = ? AND chat_id = ?
+                WHERE user_id = %s AND chat_id = %s
             ''', (f"Done today at {completion_time}", user_id, chat_id))
             conn.commit()
             await update.message.reply_text("Lekker bezig! ✅ \n_+4 punten_"
@@ -664,7 +691,7 @@ def main():
     # Start the nightly goal_status reset task
     application.job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=1, minute=0))
     
-    # Start the bot
+    # Start the botF
     application.run_polling()
 
 if __name__ == '__main__':
