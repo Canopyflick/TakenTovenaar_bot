@@ -89,15 +89,29 @@ try:
 except Exception as e:
     print(f"Error updating database schema: {e}")
 
+try:
+    cursor.execute('SELECT 1')
+    print("Database connection successful")
+except Exception as e:
+    print(f"Database connection error: {e}")
 
 # Storing all column names of the users table in columns variable (eg: 'today_goal_text') 
+# Fetch column names safely
 cursor.execute("""
     SELECT column_name 
     FROM information_schema.columns 
     WHERE table_name = 'users';
 """)
+columns_result = cursor.fetchall()
 
-columns = [column[1] for column in cursor.fetchall()]
+if columns_result:
+    columns = [column[0] for column in columns_result]  # Adjust if only one column per result
+else:
+    print("No columns found for the users table.")
+    columns = []
+
+
+
 
 # Helper functions to reduce bloat/increase modularity
 def fetch_goal_text(update):
