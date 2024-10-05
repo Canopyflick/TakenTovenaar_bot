@@ -230,13 +230,17 @@ async def stats_command(update, context):
     chat_id = update.effective_chat.id
     
     # Fetch user stats from the database
-    cursor.execute('''
-        SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text
-        FROM users
-        WHERE user_id = %s AND chat_id = %s
-    ''', (user_id, chat_id))
+    try:
+        cursor.execute('''
+            SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text
+            FROM users
+            WHERE user_id = %s AND chat_id = %s
+        ''', (user_id, chat_id))
     
-    result = cursor.fetchone()
+        result = cursor.fetchone()
+    except Exception as e:
+        print(f"Error: {e} couldn't fetch user stats?'")
+    
 
     if result:
         total_goals, completed_goals, score, today_goal_status, today_goal_text = result
@@ -270,16 +274,19 @@ async def reset_command(update, context):
     chat_id = update.effective_chat.id
     
     if has_goal_today(user_id, chat_id):
-        #Reset the user's goal status, subtract 1 point, and clear today's goal text
-        cursor.execute('''
-                       UPDATE users
-                       SET today_goal_status = 'not set',
-                       score = score - 1,
-                       today_goal_text = '',
-                       total_goals = total_goals - 1
-                       WHERE user_id = %s AND chat_id = %s
-                       ''', (user_id, chat_id))
-        conn.commit()
+        try:
+            #Reset the user's goal status, subtract 1 point, and clear today's goal text
+            cursor.execute('''
+                           UPDATE users
+                           SET today_goal_status = 'not set',
+                           score = score - 1,
+                           today_goal_text = '',
+                           total_goals = total_goals - 1
+                           WHERE user_id = %s AND chat_id = %s
+                           ''', (user_id, chat_id))
+            conn.commit()
+        except Exception as e:
+            print(f"Error resetting goal in database: {e}")
         
         await update.message.reply_text("Je doel voor vandaag is gereset 🧙‍♂️\n_-1 punt_", parse_mode="Markdown")
     else:
@@ -357,8 +364,11 @@ async def confirm_wipe(update, context):
     user_response = update.message.text.strip().upper()
     
     if user_response == 'JA':
-        cursor.execute('DELETE FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
-        conn.commit()
+        try:
+            cursor.execute('DELETE FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
+            conn.commit()
+        except Exception as e:
+            print(f"Error wiping database after confirm_wipe: {e}")
         await update.message.reply_text("Je gegevens zijn gewist 🕳️")
     else:
         await update.message.reply_text("Wipe geannuleerd 🚷")
@@ -529,10 +539,14 @@ async def handle_regular_message(update, context):
     elif user_message.isdigit() and 666:    
         completion_time = datetime.datetime.now().strftime("%sH:%sM")
         # Reset goal status
-        cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
-        conn.commit()
-        print("666 Goal status reset at", datetime.datetime.now())
-        await context.bot.send_message(chat_id=update.message.chat_id, text="_EMERGENCY RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
+        try:
+            cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
+            conn.commit()
+            print("666 Goal status reset at", datetime.datetime.now())
+            await context.bot.send_message(chat_id=update.message.chat_id, text="_EMERGENCY RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
+        except Exception as e:
+            conn.rollback()  # Rollback the transaction on error
+            print(f"Error: {e}")        
 
 # Assistant_response == 'Doelstelling'          
 async def handle_goal_setting(update, user_id, chat_id):
@@ -670,8 +684,11 @@ async def reset_goal_status(context):
         await asyncio.sleep((next_run - now).total_seconds())
         
         # Reset goal status
-        cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
-        conn.commit()
+        try:
+            cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
+            conn.commit()
+        except Exception as e:
+            print(f"Error resetting goal status: {e}")
         print("Goal status reset at", datetime.datetime.now())
         await context.bot.send_message(chat_id=context.job.chat_id, text="_Dagelijkse doelen gereset_  🧙‍♂️", parse_mode="Markdown")
 
