@@ -1,0 +1,671 @@
+﻿import os
+import random
+from tempfile import TemporaryFile
+from telegram import User, Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
+from openai import OpenAI
+import sqlite3
+import datetime
+import asyncio
+import re
+import json
+
+
+
+
+# Initialize the OpenAI client
+client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+
+# Database connection
+conn = sqlite3.connect('user_goals.db')
+cursor = conn.cursor()
+
+# Create the users table if it doesn't exists (for new users) and check if there's newly added columns (for existing users)
+try:
+    # Function to get existing columns
+    def get_existing_columns(cursor, table_name):
+        cursor.execute(f"PRAGMA table_info({table_name});")
+        return [info[1] for info in cursor.fetchall()]
+    
+    # Function to add missing columns
+    def add_missing_columns(cursor, table_name, desired_columns):
+        existing_columns = get_existing_columns(cursor, table_name)
+        for column_name, column_definition in desired_columns.items():
+            if column_name not in existing_columns:
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition};")
+                print(f"Added column {column_name} to {table_name}")
+            
+    # Desired columns with definitions
+    desired_columns = {
+        'user_id': 'INTEGER',
+        'chat_id': 'INTEGER',
+        'total_goals': 'INTEGER DEFAULT 0',
+        'completed_goals': 'INTEGER DEFAULT 0',
+        'score': 'INTEGER DEFAULT 0',
+        'today_goal_status': "TEXT DEFAULT 'not set'",
+        'today_goal_text': "TEXT DEFAULT ''",
+        'pending_challenge': 'TEXT DEFAULT "{}"', # Store challenges as JSON string
+        'naam': 'TEXT DEFAULT' 'Peter'
+        # Add any new columns here
+        # 'new_column': "TEXT DEFAULT ''",
+    }
+
+    # Create the table if it doesn't exist
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            user_id INTEGER,
+            chat_id INTEGER,
+            PRIMARY KEY (user_id, chat_id)
+        )
+    ''')
+    conn.commit()
+
+    # Add missing columns
+    add_missing_columns(cursor, 'users', desired_columns)
+    conn.commit()
+except Exception as e:
+    print(f"Error updating database schema: {e}")
+
+
+# Storing all column names of the users table in columns variable (eg: 'today_goal_text') 
+cursor.execute("PRAGMA table_info(users)")
+columns = [column[1] for column in cursor.fetchall()]
+
+# Helper functions to reduce bloat/increase modularity
+def fetch_goal_text(update):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    try:
+        # Check if the user has a goal for today
+        if has_goal_today(user_id, chat_id):
+            cursor.execute('SELECT today_goal_text FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+            result = cursor.fetchone()
+            
+            if result and result[0]:
+                print(f"Goal text found: {result[0]}")
+                return result[0]  # Return the goal text if found
+            else:
+                print("No goal text found for today.")
+                return ''  # Return empty string if no goal text is found
+        else:
+            print("The user has no goal for today.")
+            return ''  # Return empty string if the user has no goal for today
+
+    except Exception as e:
+        print(f"Error fetching goal data: {e}")
+        return ''  # Return empty string if an error occurs
+
+def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
+    # Define system messages based on the message_type
+    if message_type == 'classification':
+        system_message = (
+            "Jij classificeert een berichtje van een gebruiker in een Telegramgroep "
+            "in een van de volgende drie groepen: Doelstelling, Klaar of Overig. "
+            "Elk bericht waaruit blijkt dat de gebruiker van plan is om iets (specifieks) te gaan doen vandaag, "
+            "is een 'Doelstelling'. Als de gebruiker rapporteert dat het ingestelde doel helemaal gelukt is, "
+            "dan is dat 'Klaar'. Alle andere gevallen zijn 'Overig'. Antwoord alleen met 'Doelstelling', 'Klaar' of 'Overig'."
+        )
+    elif message_type == 'other':
+        system_message = (
+            "Jij bent @TakenTovenaar_bot, de enige bot in een accountability-Telegramgroep van vrienden. "
+            "Gedraag je cheeky en mysterieus, maar streef bovenal naar waarheid. "
+            "Als de user een metavraag of -verzoek heeft over bijvoorbeeld een doel stellen in de appgroep, "
+            "antwoord dan alleen dat ze het command /help kunnen gebruiken. "
+            "Er zijn meer commando's, maar die ken jij allemaal niet. "
+            "Je hebt nu alleen toegang tot dit bericht, niet tot volgende of vorige berichtjes. "
+            "Een back-and-forth met de user is dus niet mogelijk."
+        )
+    elif message_type == 'sleepy':
+        system_message = ("Geef antwoord alsof je slaapdronken en verward bent, een beetje van het padje af misschien. Maximaal 3 zinnen.")
+    else:
+         raise ValueError("Invalid message_type. Must be 'classification' or 'other' or 'sleepy'.")
+        
+    # Create the message list with the appropriate system message
+    messages = [{"role": "system", "content": system_message}]
+    
+    # Include the goal text if available
+    if goal_text:
+        messages.append({"role": "user", "content": f"Het ingestelde doel van de gebruiker is: {goal_text}"})
+    
+    # Include the user's message, confused bot gets less info
+    if message_type == 'sleepy':
+        user_content = user_message
+    else:
+        user_content = f"Een berichtje van {update.effective_user.first_name}: {user_message}"
+    if bot_last_response:
+        user_content += f" (Reactie op: {bot_last_response})"
+    
+    messages.append({"role": "user", "content": user_content})
+    
+    return messages
+
+async def send_openai_request(messages, model="gpt-4o-mini", temperature=None):
+    try:
+        request_params = {
+            "model": model,
+            "messages": messages
+            }
+        # only add temperature if it's provided (not None)
+        if temperature is not None:
+            request_params["temperature"] = temperature
+            
+        response = client.chat.completions.create(**request_params)
+        
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"Error calling OpenAI: {e}")
+        return None
+
+
+# Asynchronous command functions
+async def start_command(update, context):
+    await update.message.reply_text('Hoi! 👋\n\nIk ben Taeke Toekema Takentovenaar. Stuur me een berichtje als je wilt, bijvoorbeeld om je dagdoel in te stellen of voortgang te rapporteren. Gebruik "@" met mijn naam \n\nKlik op >> /help << voor meer opties')
+    
+async def help_command(update, context):
+    help_message = (
+        'Hier zijn de beschikbare commando\'s:\n'
+        '👋 /start - Begroeting\n'
+        '❓/help - Dit lijstje\n'
+        '📊 /stats - Je persoonlijke stats\n'
+        '🤔 /reset - Pas je dagdoel aan\n'
+        '🗑️ /wipe - Wis je gegevens hier'
+    )
+    await update.message.reply_text(help_message)
+
+# Helper function to escape MarkdownV2 special characters
+def escape_markdown_v2(text):
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
+    
+async def stats_command(update, context):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    # Fetch user stats from the database
+    cursor.execute('''
+        SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text
+        FROM users
+        WHERE user_id = ? AND chat_id = ?
+    ''', (user_id, chat_id))
+    
+    result = cursor.fetchone()
+
+    if result:
+        total_goals, completed_goals, score, today_goal_status, today_goal_text = result
+        completion_rate = (completed_goals / total_goals * 100) if total_goals > 0 else 0
+        
+        stats_message = f"*Statistieken voor {escape_markdown_v2(update.effective_user.first_name)}*\n"
+        stats_message += f"🏆 Score: {score} punten\n"
+        stats_message += f"🎯 Doelentotaal: {total_goals}\n"
+        stats_message += f"✅ Voltooid: {completed_goals} {escape_markdown_v2(f'({completion_rate:.1f}%)')}\n"
+        
+        # Check for the three possible goal statuses
+        if today_goal_status == 'set':
+            stats_message += f"📅 Dagdoel: Ingesteld\n📝 {escape_markdown_v2(today_goal_text)}"
+        elif today_goal_status.startswith('Done'):
+            completion_time = today_goal_status.split(' ')[3]  # Extracts time from "Done today at H:M"
+            stats_message += f"📅 Dagdoel: Voltooid om {escape_markdown_v2(completion_time)}\n📝 ||{escape_markdown_v2(today_goal_text)}||"
+        else:
+            stats_message += '📅 Dagdoel: Nog niet ingesteld'
+        try:       
+            await update.message.reply_text(stats_message, parse_mode="MarkdownV2")
+        except AttributeError as e:
+            print("die gekke error weer (jaaa)")
+    else:
+        await update.message.reply_text(
+        escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me een berichtje met je dagdoel om te beginnen (gebruik '@') 🧙‍♂️"),
+        parse_mode="MarkdownV2"
+    )
+  
+async def reset_command(update, context):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    
+    if has_goal_today(user_id, chat_id):
+        #Reset the user's goal status, subtract 1 point, and clear today's goal text
+        cursor.execute('''
+                       UPDATE users
+                       SET today_goal_status = 'not set',
+                       score = score - 1,
+                       today_goal_text = '',
+                       total_goals = total_goals - 1
+                       WHERE user_id = ? AND chat_id = ?
+                       ''', (user_id, chat_id))
+        conn.commit()
+        
+        await update.message.reply_text("Je doel voor vandaag is gereset \n_-1 punt_", parse_mode="Markdown")
+    else:
+        await update.message.reply_text("Je hebt geen onvoltooid doel om te resetten (/stats).")
+        
+async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    challenger = update.effective_user
+    challenger_id = challenger.id
+    challenger_name = challenger.first_name
+    chat_id = update.effective_chat.id
+
+    # Check if the command is a reply to another message
+    if update.message.reply_to_message is None:
+        await update.message.reply_text("Je moet deze command als reply gebruiken op het bericht van degene die je wilt uitdagen! 🧙‍♂️")
+        return
+
+    challenged = update.message.reply_to_message.from_user
+    challenged_id = challenged.id
+    challenged_name = challenged.first_name
+    if challenger_id == challenged_id:
+        await update.message.reply_text(f"🚫 BELANGENVERSTRENGELING! 🚫🧙‍♂️")
+        return  # Stop further execution if the user is challenging themselves
+    
+    # Check if the challenger has enough points to challenge (needs at least 1 point)
+    cursor.execute('SELECT score FROM users WHERE user_id = ? AND chat_id = ?', (challenger_id, chat_id))
+    score = cursor.fetchone()
+    if not score or score[0] < 1:
+        await update.message.reply_text(f"🚫 {challenger_name}, je hebt niet genoeg punten om iemand uit te dagen! 🧙‍♂️\nJe hebt minstens 1 punt nodig (/stats)")
+        return  # Stop further execution if the challenger has fewer than 1 point
+
+    # Check if the challenger has already challenged the user
+    # cursor.execute('SELECT COUNT(*) FROM challenges WHERE challenger_id = ? AND challenged_id = ? AND chat_id = ?',
+    #                 (challenger_id, challenged_id, chat_id))
+    # result = cursor.fetchone()
+    # if result and result[0] > 0:
+    # #     await update.message.reply_text(f"🚫 {challenger_name}, je hebt {challenged_name} vandaag al uitgedaagd!")
+    # #     return  # Stop further execution if the challenger has already challenged the user today
+
+    # Check if the challenged user has a goal set for today #moet ook werken als result leeg is 
+    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = ? AND chat_id = ?', (challenged_id, chat_id))
+    result = cursor.fetchone()
+    if result is None:
+        goal_status = 'not set'
+
+    if goal_status == 'not set':
+        await update.message.reply_text(f"🚫 {challenged_name} heeft vandaag nog geen doel ingesteld! 🧙‍♂️")
+    if goal_status.startswith("Done"):
+        await update.message.reply_text(f"🚫 {challenged_name} heeft vandaag het doel al behaald! 🧙‍♂️")
+        return
+    
+    # Vanaf hier is het menens
+    await update.message.reply_text(f"confirmation message")
+
+    # Subtract 1 point from the challenger's score
+    cursor.execute('UPDATE users SET score = score - 1 WHERE user_id = ? AND chat_id = ?', (challenger_id, update.effective_chat.id))
+    
+
+# Define a state for the conversation
+CONFIRM_WIPE = range(1)
+
+async def wipe_command(update, context):
+    user_id = update.effective_user.id
+    
+    # Ask for confirmation
+    await update.message.reply_text(
+        "Weet je zeker dat je al je voortgang wilt laten wegtoveren? 🧙‍♂️\n\nTyp 'JA' om te bevestigen, of iets anders om te annuleren."
+    )
+
+    # Set the conversation state
+    return CONFIRM_WIPE
+
+async def confirm_wipe(update, context):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    user_response = update.message.text.strip().upper()
+    
+    if user_response == 'JA':
+        cursor.execute('DELETE FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+        conn.commit()
+        await update.message.reply_text("Je gegevens zijn gewist 🕳️")
+    else:
+        await update.message.reply_text("Wipe geannuleerd 🚷")
+    
+    return ConversationHandler.END
+        
+
+# Function to update user goal text to present or past tense in the database when Doelstelling or Klaar 
+def update_user_goal(user_id, chat_id, goal_text):
+    cursor.execute('''
+        INSERT INTO users (user_id, chat_id, today_goal_text)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id, chat_id) DO UPDATE SET
+        today_goal_text = ?
+    ''', (user_id, chat_id, goal_text, goal_text))
+    conn.commit()
+    
+# Function to check if user has set a goal today
+def has_goal_today(user_id, chat_id):
+    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+    result = cursor.fetchone()
+    return result and result[0] == 'set'
+
+# Function to check if user has finished a goal today
+def finished_goal_today(user_id, chat_id):
+    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = ? AND chat_id = ?', (user_id, chat_id))
+    result = cursor.fetchone()
+    return result and result[0].startswith("Done")
+
+bot_message_ids = {}
+
+# Function to analyze any chat message, and check whether it replies to the bot, mentions it, or neither
+async def analyze_message(update, context):
+    try:
+        if update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
+            await analyze_bot_reply(update, context)
+        elif update.message and '@TakenTovenaar_bot' in update.message.text:
+            await analyze_bot_mention(update, context)
+        else:
+            await analyze_regular_message(update, context)
+    except Exception as e:
+        await update.message.reply_text("Er ging iets mis in analyze_message, probeer het later opnieuw.")
+        print(f"Error: {e}")    
+
+async def print_edit(update, context):
+    print("Someone edited a message")
+        
+# Function to analyze replies to bot
+async def analyze_bot_reply(update, context):
+    user_message = update.message.text
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    bot_last_response = update.message.reply_to_message.text
+    goal_text = fetch_goal_text(update)
+    
+
+    try:
+        # Prepare and send OpenAI messages with bot_last_response
+        messages = prepare_openai_messages(
+            update, 
+            user_message, 
+            'classification', 
+            goal_text=goal_text if goal_text else None, 
+            bot_last_response=bot_last_response
+        )
+        assistant_response = await send_openai_request(messages, temperature=0.1)
+        # Handle the OpenAI response
+        if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
+            rand_value = random.random()
+            # 4 times out of 5 (80%)
+            if rand_value < 0.80:
+                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
+            # once every 6 times (16,67%)
+            elif rand_value >= 0.8333:
+                await update.message.reply_text("Je hebt je doel al gehaald vandaag... STREBER! 😘")
+            # once every 30 times (3,33%)    
+            else:
+                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
+        elif assistant_response == 'Doelstelling':
+            await handle_goal_setting(update, user_id, chat_id)
+        elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
+            await handle_goal_completion(update, context, user_id, chat_id, goal_text)
+        else:
+            await handle_unclassified_mention(update)
+
+    except Exception as e:
+        await update.message.reply_text("Er ging iets misss, probeer het later opnieuw.")
+        print(f"Error: {e}")
+
+# Function to analyze @TakenTovenaar_bot mentions via OpenAI Chat API
+async def analyze_bot_mention(update, context):
+    user_message = update.message.text
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+
+    try:
+        # Fetch goal_text if the user has a goal today, and use None if it's empty, for prepare_openai_messages
+        goal_text = fetch_goal_text(update)
+        goal_text=goal_text if goal_text else None
+
+        # Prepare and send OpenAI messages
+        messages = prepare_openai_messages(update, user_message, message_type='classification', goal_text=goal_text)
+        print(messages)
+        assistant_response = await send_openai_request(messages, temperature=0.1)
+
+        if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
+            
+            rand_value = random.random()
+            # 4 times out of 5 (80%)
+            if rand_value < 0.80:
+                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
+            # once every 6 times (16,67%)
+            elif rand_value >= 0.8333:
+                await update.message.reply_text("Je hebt je doel al gehaald vandaag... STREBER! 😘")
+            # once every 30 times (3,33%)    
+            else:
+                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
+        elif assistant_response == 'Doelstelling':
+            await handle_goal_setting(update, user_id, chat_id)
+        elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
+            await handle_goal_completion(update, context, user_id, chat_id, goal_text)
+        else:
+            await handle_unclassified_mention(update)
+
+    except Exception as e:
+        await update.message.reply_text("Er ging iets mis, probeer het later opnieuw.")
+        print(f"Error: {e}")
+
+# Analyze a regular message, to see if it's maybe trying to set or complete goals 
+async def analyze_regular_message(update, context):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    user_message = update.message.text
+    goal_text = fetch_goal_text(update)
+    # Prepare and send OpenAI messages
+    # messages = prepare_openai_messages(update, user_message, 'classification', goal_text)
+    # assistant_response = await send_openai_request(messages, temperature=0.1)
+    # if assistant_response == "Doelstelling":
+    #     # Later bouwen: goal_setting_confirmation
+    #     await handle_goal_setting(update, user_id, chat_id)
+    # elif assistant_response == "Klaar" and has_goal_today(user_id, chat_id):
+    #     # Later bouwen: goal_completion_confirmation
+    #     await handle_goal_completion(update, context, user_id, chat_id, goal_text)
+    # else:
+    await handle_regular_message(update, context)
+
+async def handle_regular_message(update, context):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    user_message = update.message.text
+    goal_text = fetch_goal_text(update)
+    if len(user_message) > 11 and random.random() < 0.06:
+        messages = prepare_openai_messages(update, user_message, 'sleepy')
+        assistant_response = await send_openai_request(messages, "gpt-4o")
+        await update.message.reply_text(assistant_response)
+    # Random plek om de bot impromptu random berichtjes te laten versturen huehue
+    # Reply to trigger    
+    #elif user_message == '👀':
+    #    await update.message.reply_text("@Anne-Cathrine, ben je al aan het lezen? 🧙‍♂️😘")
+    # Send into the void
+    elif user_message == '@Anne-Cathrine heeft dat boek echt gelezen hoor':
+        await context.bot.send_message(chat_id=update.message.chat_id, text="Ohh whoops... sorry hoor, ik lette even niet goed op.\n_+1 punt_  🧙‍♂️", parse_mode="Markdown")
+    # Dice-roll
+    elif user_message.isdigit() and 1 <= int(user_message) <= 6:
+        await context.bot.send_dice(chat_id=update.message.chat_id)
+    # Nightly reset simulation
+    elif user_message.isdigit() and 666:    
+        completion_time = datetime.datetime.now().strftime("%H:%M")
+        # Reset goal status
+        cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
+        conn.commit()
+        print("666 Goal status reset at", datetime.datetime.now())
+        await context.bot.send_message(chat_id=update.message.chat_id, text="_EMERGENCY RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
+
+# Assistant_response == 'Doelstelling'          
+async def handle_goal_setting(update, user_id, chat_id):
+    if has_goal_today(user_id, chat_id):
+        await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
+    else:
+        user_message = update.message.text
+
+        # Rephrase the goal in second person
+        try:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=1,
+                messages=[
+                    {"role": "system", "content": "Je herformuleert de dagelijkse doelstelling van de gebruiker naar een zin in de tweede persoon enkelvoud, zoiets van 'Vandaag ga jij [doel]', 'Jij bent vandaag van plan [doel]', etc. Zorg ervoor dat bij het omschrijven geen informatie verloren gaat."},
+                    {"role": "user", "content": user_message}
+                ]
+            )
+            goal_text = response.choices[0].message.content.strip()
+        except Exception as e:
+            await update.message.reply_text("Er ging iets mis bij het verwerken van je doel. Probeer het later opnieuw.")
+            print(f"Error in rewording goal to 2nd person: {e}")
+            return
+        
+        # Save the reworded goal in the database        
+        update_user_goal(user_id, chat_id, goal_text)
+        # Change goal status and total
+        try:
+            cursor.execute('''
+                           UPDATE users 
+                           SET today_goal_status = 'set',
+                           total_goals = total_goals + 1,
+                           score = score + 1
+                           WHERE user_id = ? AND chat_id = ?
+                           ''', (user_id, chat_id))
+            conn.commit()
+        except Exception as e:
+            await update.message.reply_text("Doelstatusprobleempje. Probeer het later opnieuw.")
+            print(f"Error updating today_goal_status: {e}")
+            return
+        
+        # Send confirmation message
+        if update.message.text.endswith(';)'):
+            await update.message.reply_text('🥰 Succes schatje! 😚 \n_+1 punt_', parse_mode="Markdown")
+        elif random.random() < 0.125:
+            await update.message.reply_text('Staat genoteerd! 🧙‍♂️ Succes! 💖 \n_+1 punt_', parse_mode="Markdown")
+        else:
+            responses = [
+                'Staat genoteerd! ✍️ \n_+1 punt_',
+                'Staat genoteerd! 📝 \n_+1 punt_',
+                'Staat genoteerd! 📋 \n_+1 punt_',
+                'Staat genoteerd! ✒️ \n_+1 punt_',
+                'Staat genoteerd! 🖊️ \n_+1 punt_',
+                'Staat genoteerd! ✏️ \n_+1 punt_',
+                'Staat genoteerd! 🧙‍♂️ \n_+1 punt_'
+            ]
+            reply = random.choice(responses)
+            await update.message.reply_text(reply, parse_mode="Markdown")
+            
+
+async def check_goal_compatibility(update, goal_text, user_message):
+    messages = [
+                {"role": "system", "content": "Controleer of een verslaggeving past bij een gesteld doel. Antwoord alleen met 'Ja' of 'Nee'."},
+                {"role": "user", "content": f"Het gestelde doel is {goal_text} en de verslaggeving is {user_message}"}
+            ]
+    assistant_response = await send_openai_request(messages, temperature=0.1)
+    print(f"Uitkomst van de compatibility check: {assistant_response}")
+    return assistant_response
+
+# Assistant_response == 'Klaar'             
+async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
+    # Rephrase the goal in past tense
+    user_message = update.message.text
+    try:
+        assistant_response = await check_goal_compatibility(update, goal_text, user_message)
+        if assistant_response == 'Nee':
+            await handle_unclassified_mention(update)
+        else:
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                temperature=0.1,
+                messages=[
+                    {"role": "system", "content": "Herformuleer naar een succesvol afgerond doel: tweede persoon enkelvoud, verleden tijd."},
+                    {"role": "user", "content": goal_text}
+                ]
+            )
+            goal_text = response.choices[0].message.content.strip()
+            # Save the reworded past tense goal in the database        
+            user_id = update.effective_user.id
+            chat_id = update.effective_chat.id
+            update_user_goal(user_id, chat_id, goal_text)
+        
+        
+            completion_time = datetime.datetime.now().strftime("%H:%M")
+            # Update user's goal status and statistics
+            cursor.execute('''
+                UPDATE users 
+                SET today_goal_status = ?, 
+                    completed_goals = completed_goals + 1,
+                    score = score + 4
+                WHERE user_id = ? AND chat_id = ?
+            ''', (f"Done today at {completion_time}", user_id, chat_id))
+            conn.commit()
+            await update.message.reply_text("Lekker bezig! ✅ \n_+4 punten_"
+                                    , parse_mode="Markdown")
+    except Exception as e:
+        print(f"Error in goal_completion: {e}")
+        return
+
+# Assistant_response == 'Overig'  
+async def handle_unclassified_mention(update):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    user_message = update.message.text
+    goal_text = fetch_goal_text(update)
+    goal_text=goal_text if goal_text else None
+    bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
+    
+    messages = prepare_openai_messages(update, user_message, 'other', goal_text, bot_last_response)
+    assistant_response = await send_openai_request(messages, "gpt-4o")
+    await update.message.reply_text(assistant_response)
+
+        
+# Function to reset goal status nightly
+async def reset_goal_status(context):
+    while True:
+        now = datetime.datetime.now()
+        # Calculate time until next 2 AM
+        if now.hour >= 2:
+            next_run = now.replace(day=now.day+1, hour=2, minute=0, second=0, microsecond=0)
+        else:
+            next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        
+        # Sleep until next run time
+        await asyncio.sleep((next_run - now).total_seconds())
+        
+        # Reset goal status
+        cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
+        conn.commit()
+        print("Goal status reset at", datetime.datetime.now())
+        await context.bot.send_message(chat_id=context.job.chat_id, text="_Dagelijkse doelen gereset_  🧙‍♂️", parse_mode="Markdown")
+
+        
+
+
+def main():
+    # Fetch the API token from environment variables
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    if token is None:
+        raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables")
+    
+    # Create the bot application with ApplicationBuilder
+    application = ApplicationBuilder().token(token).build()
+    
+    # Bind the commands to their respective functions
+    application.add_handler(CommandHandler("start", start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("reset", reset_command))
+    application.add_handler(CommandHandler("challenge", challenge_command))
+    wipe_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('wipe', wipe_command)],
+        states={
+            CONFIRM_WIPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_wipe)],
+        },
+        fallbacks=[],
+        conversation_timeout=30
+    )
+    application.add_handler(wipe_conv_handler)
+    
+    # Bind the message analysis to any non-command text messages
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, analyze_message))
+    
+    # Handler for edited messages
+    application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
+    
+    # Start the nightly goal_status reset task
+    application.job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=1, minute=0))
+    
+    # Start the bot
+    application.run_polling()
+
+if __name__ == '__main__':
+    main()
