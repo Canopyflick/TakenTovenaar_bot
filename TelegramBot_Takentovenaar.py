@@ -518,8 +518,10 @@ async def handle_regular_message(update, context):
     #elif user_message == '👀':
     #    await update.message.reply_text("@Anne-Cathrine, ben je al aan het lezen? 🧙‍♂️😘")
     # Send into the void
-    elif user_message == '@Anne-Cathrine heeft dat boek echt gelezen hoor':
-        await context.bot.send_message(chat_id=update.message.chat_id, text="Ohh whoops... sorry hoor, ik lette even niet goed op.\n_+1 punt_  🧙‍♂️", parse_mode="Markdown")
+    elif user_message == 'oké en we zijn weer live':
+        await context.bot.send_message(chat_id=update.message.chat_id, text="Database reset hihi, allemaal ONvoLDoEnDe 🧙‍♂️", parse_mode="Markdown")
+    elif user_message == 'whoops':
+        await context.bot.send_message(chat_id=update.message.chat_id, text="*Ik ben voorlopig kapot. Tot later!* 🧙‍♂️", parse_mode="Markdown")
     # Dice-roll
     elif user_message.isdigit() and 1 <= int(user_message) <= 6:
         await context.bot.send_dice(chat_id=update.message.chat_id)
