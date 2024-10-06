@@ -605,7 +605,7 @@ async def handle_regular_message(update, context):
     
         # Check the outcome of the dice roll
         rolled_value = dice_message.dice.value
-        await asyncio.sleep(4)
+        await asyncio.sleep(3.5)
     
         # Give a reply based on the rolled value
         if rolled_value == user_guess:
