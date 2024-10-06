@@ -74,8 +74,8 @@ try:
     # Create the table if it doesn't exist
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER,
-            chat_id INTEGER,
+            user_id BIGINT,
+            chat_id BIGINT,
             first_name TEXT,
             total_goals INTEGER DEFAULT 0,
             completed_goals INTEGER DEFAULT 0,
@@ -87,10 +87,23 @@ try:
         )
     ''')
     conn.commit()
+    # Alter user_id and chat_id to BIGINT if needed
+    try:
+        cursor.execute("""
+            ALTER TABLE users
+            ALTER COLUMN user_id TYPE BIGINT,
+            ALTER COLUMN chat_id TYPE BIGINT;
+        """)
+        conn.commit()
+        print("Altered user_id and chat_id to BIGINT")
+    except Exception as e:
+        print(f"Error altering columns user_id and chat_id to BIGINT: {e}")
+        conn.rollback()
 
     # Add missing columns
     add_missing_columns(cursor, 'users', desired_columns)
     conn.commit()
+
 
 except Exception as e:
     print(f"Error updating database schema: {e}")
@@ -197,7 +210,7 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
         user_content = f"Een berichtje van {update.effective_user.first_name}: {user_message}"
     if bot_last_response:
         user_content += f" (Reactie op: {bot_last_response})"
-    print(f"user prompt: user_content")
+    print(f"user prompt: {user_content}")
     messages.append({"role": "user", "content": user_content})
     
     return messages
