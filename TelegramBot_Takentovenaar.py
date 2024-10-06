@@ -728,7 +728,7 @@ async def schedule_goal_reset_job(application):
 
         
 
-def main():
+async def main():
     # Fetch the API token from environment variables
     token = os.getenv('TELEGRAM_BOT_TOKEN')
     if token is None:
@@ -768,4 +768,4 @@ def main():
     application.run_polling()
 
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
