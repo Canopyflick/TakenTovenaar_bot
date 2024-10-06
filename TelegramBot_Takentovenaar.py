@@ -88,12 +88,14 @@ try:
     conn.commit()
 except Exception as e:
     print(f"Error updating database schema: {e}")
+    conn.rollback()
 
 try:
     cursor.execute('SELECT 1')
     print("Database connection successful")
 except Exception as e:
     print(f"Database connection error: {e}")
+    conn.rollback
 
 # Storing all column names of the users table in columns variable (eg: 'today_goal_text') 
 # Fetch column names safely
@@ -113,6 +115,7 @@ try:
         columns = []
 except Exception as e:
     print(f"Error fetching column date: {e}")
+    conn.rollback
 
 
 
@@ -142,6 +145,7 @@ def fetch_goal_text(update):
     except Exception as e:
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
+
 
 def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
     # Define system messages based on the message_type
@@ -287,6 +291,7 @@ async def reset_command(update, context):
             conn.commit()
         except Exception as e:
             print(f"Error resetting goal in database: {e}")
+            conn.rollback
         
         await update.message.reply_text("Je doel voor vandaag is gereset 🧙‍♂️\n_-1 punt_", parse_mode="Markdown")
     else:
@@ -369,6 +374,7 @@ async def confirm_wipe(update, context):
             conn.commit()
         except Exception as e:
             print(f"Error wiping database after confirm_wipe: {e}")
+            conn.rollback
         await update.message.reply_text("Je gegevens zijn gewist 🕳️")
     else:
         await update.message.reply_text("Wipe geannuleerd 🚷")
@@ -378,12 +384,16 @@ async def confirm_wipe(update, context):
 
 # Function to update user goal text to present or past tense in the database when Doelstelling or Klaar 
 def update_user_goal(user_id, chat_id, goal_text):
-    cursor.execute('''
-    INSERT INTO users (user_id, chat_id, today_goal_text)
-    VALUES (%s, %s, %s)
-    ON CONFLICT (user_id, chat_id) DO UPDATE SET
-    today_goal_text = EXCLUDED.today_goal_text
-''', (user_id, chat_id, goal_text))
+    try:  
+        cursor.execute('''
+        INSERT INTO users (user_id, chat_id, today_goal_text)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (user_id, chat_id) DO UPDATE SET
+        today_goal_text = EXCLUDED.today_goal_text
+    ''', (user_id, chat_id, goal_text))
+    except Exception as e:
+        print(f"Error in update_user_goal: {e}")
+        conn.rollback
     
 # Function to check if user has set a goal today
 def has_goal_today(user_id, chat_id):
@@ -586,6 +596,7 @@ async def handle_goal_setting(update, user_id, chat_id):
         except Exception as e:
             await update.message.reply_text("Doelstatusprobleempje. Probeer het later opnieuw.")
             print(f"Error updating today_goal_status: {e}")
+            conn.rollback
             return
         
         # Send confirmation message
@@ -654,6 +665,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                                     , parse_mode="Markdown")
     except Exception as e:
         print(f"Error in goal_completion: {e}")
+        conn.rollback
         return
 
 # Assistant_response == 'Overig'  
@@ -690,6 +702,7 @@ async def reset_goal_status(context):
         except Exception as e:
             print(f"Error resetting goal status: {e}")
         print("Goal status reset at", datetime.datetime.now())
+        conn.rollback
         await context.bot.send_message(chat_id=context.job.chat_id, text="_Dagelijkse doelen gereset_  🧙‍♂️", parse_mode="Markdown")
 
         
