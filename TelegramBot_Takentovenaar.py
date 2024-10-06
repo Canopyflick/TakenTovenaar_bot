@@ -163,6 +163,20 @@ def fetch_goal_text(update):
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
     
+def fetch_score(update):
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    try:
+        cursor.execute('SELECT score FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
+        result = cursor.fetchone()
+        if result is not None:
+            return result[0]  # Extracting the score from the tuple
+        else:
+            return 0  # Return a default value if the score is not found
+    except Exception as e:
+        print(f"Error fetching score: {e}")
+        return 0  # Return a default value in case of error
+
 
         
 
@@ -758,9 +772,8 @@ async def reset_goal_status(context):
 async def dice_roll(update, context):
     user_message = update.user_message
     try:
-        # score = fetch_score()
-        if 5>3:
-            
+        score = fetch_score()
+        if score > 0:
             # Send the dice and capture the message object
             dice_message = await context.bot.send_dice(
             chat_id=update.message.chat_id,
