@@ -738,14 +738,15 @@ def main():
     
         # Create the bot application with ApplicationBuilder
         application = ApplicationBuilder().token(token).build()
-    
+        print("main 1/6")
         # Bind the commands to their respective functions
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("help", help_command))
+        print("main 2/6")
         application.add_handler(CommandHandler("stats", stats_command))
         application.add_handler(CommandHandler("reset", reset_command))
         application.add_handler(CommandHandler("challenge", challenge_command))
-
+        print("main 3/6")
         wipe_conv_handler = ConversationHandler(
             entry_points=[CommandHandler('wipe', wipe_command)],
             states={
@@ -755,17 +756,18 @@ def main():
             conversation_timeout=30
         )
         application.add_handler(wipe_conv_handler)
+        print("main 4/6")
     
         # Bind the message analysis to any non-command text messages
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
-    
+        print("main 5/6")
         # Handler for edited messages
         application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
     
         # Schedule the reset job using job_queue
         # job_queue = application.job_queue
         # job_queue.run_daily(reset_goal_status, time=datetime.time(hour=2, minute=0, second=0))
-
+        print("main 6/6")
         # Start the bot
         application.run_polling()
         print("Exiting main function normally")
