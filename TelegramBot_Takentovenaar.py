@@ -598,7 +598,11 @@ async def handle_regular_message(update, context):
     # Dice-roll
     elif user_message.isdigit() and 1 <= int(user_message) <= 6:
         # Send the dice and capture the message object
-        dice_message = await context.bot.send_dice(chat_id=update.message.chat_id)
+        
+        dice_message = await context.bot.send_dice(
+        chat_id=update.message.chat_id,
+        reply_to_message_id=update.message.message_id
+    )
     
         # Extract the value that the user guessed
         user_guess = int(user_message)
