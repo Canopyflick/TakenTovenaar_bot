@@ -605,12 +605,21 @@ async def handle_regular_message(update, context):
     
         # Check the outcome of the dice roll
         rolled_value = dice_message.dice.value
-        await asyncio.sleep(3.5)
+        await asyncio.sleep(4)
     
         # Give a reply based on the rolled value
         if rolled_value == user_guess:
-            await context.bot.send_message(chat_id=update.message.chat_id, text=f"🎉")
+            await context.bot.send_message(
+            chat_id=update.message.chat_id, 
+            text=f"🎉",
+            reply_to_message_id=update.message.message_id
+        )
         else:
+            await context.bot.send_message(
+            chat_id=update.message.chat_id, 
+            text=f"Nope.",
+            reply_to_message_id=update.message.message_id
+        )
             await context.bot.send_message(chat_id=update.message.chat_id, text=f"Nope.")
 
     # Nightly reset simulation
