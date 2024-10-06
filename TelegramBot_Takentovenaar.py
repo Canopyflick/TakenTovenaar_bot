@@ -772,7 +772,7 @@ async def roll_dice(update, context):
     chat_id = update.effective_chat.id
     try:
         score = fetch_score(update)
-        if score > 0:
+        if score > 1:
             # Send the dice and capture the message object
             dice_message = await context.bot.send_dice(
             chat_id=update.message.chat_id,
@@ -787,6 +787,17 @@ async def roll_dice(update, context):
     
             # Give a reply based on the rolled value
             if rolled_value == user_guess:
+                try:
+                    # subtract 1 point
+                    cursor.execute('''
+                                   UPDATE users
+                                   SET score = score + 5
+                                   WHERE user_id = %s AND chat_id = %s
+                                   ''', (user_id, chat_id))
+                    conn.commit()
+                except Exception as e:
+                    print(f"Error resetting goal in database: {e}")
+                    conn.rollback()
                 await context.bot.send_message(
                 chat_id=update.message.chat_id, 
                 text=f"🎉",
@@ -817,7 +828,7 @@ async def roll_dice(update, context):
         else:
             await context.bot.send_message(
             chat_id=update.message.chat_id, 
-            text=f"Je hebt niet genoeg punten om te dobbelen 🧙‍♂️",
+            text=f"Je hebt niet genoeg punten om te dobbelen 🧙‍♂️\n_minimaal 2 punten nodig_", parse_mode="Markdown",
             reply_to_message_id=update.message.message_id
         )
 
