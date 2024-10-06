@@ -701,28 +701,36 @@ async def handle_unclassified_mention(update):
     await update.message.reply_text(assistant_response)
 
         
-# Function to reset goal status nightly
 async def reset_goal_status(context):
-    while True:
-        now = datetime.datetime.now()
-        # Calculate time until next 2 AM
-        if now.hour >= 2:
-            next_run = now.replace(day=now.day+1, hour=2, minute=0, second=0, microsecond=0)
-        else:
-            next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
-        
-        # Sleep until next run time
-        await asyncio.sleep((next_run - now).total_seconds())
-        
-        # Reset goal status
-        try:
-            cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
-            conn.commit()
-            print("Goal status reset at", datetime.datetime.now())
-        except Exception as e:
-            print(f"Error resetting goal status: {e}")
-            conn.rollback
-        await context.bot.send_message(chat_id=context.job.chat_id, text="_Dagelijkse doelen gereset_  🧙‍♂️", parse_mode="Markdown")
+    try:
+        # Fetch all unique chat IDs from the users table
+        cursor.execute("SELECT DISTINCT chat_id FROM users")
+        chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
+
+        # Reset goal status for all users
+        cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
+        conn.commit()
+        print("Goal status reset at", datetime.datetime.now())
+
+        # Send reset message to all active chats
+        for chat_id in chat_ids:
+            await context.bot.send_message(chat_id=chat_id, text="_Dagelijkse doelen gereset_  🧙‍♂️", parse_mode="Markdown")
+
+    except Exception as e:
+        print(f"Error resetting goal status: {e}")
+        conn.rollback()
+
+
+# Schedule the job
+async def schedule_goal_reset_job(application):
+    job_queue = application.job_queue
+    chat_id = SOME_CHAT_ID  # Replace with the appropriate chat ID or pass it dynamically if needed
+    job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=2), context={'chat_id': chat_id})
+
+if __name__ == '__main__':
+    application = ApplicationBuilder().token(token).build()
+    asyncio.run(schedule_goal_reset_job(application))
+    application.run_polling()
 
         
 
