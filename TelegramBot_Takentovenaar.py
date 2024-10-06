@@ -729,6 +729,12 @@ async def schedule_goal_reset_job(application):
         
 
 
+import os
+import datetime
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters
+
+# (Other imports and code)
+
 def main():
     # Fetch the API token from environment variables
     token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -744,6 +750,7 @@ def main():
     application.add_handler(CommandHandler("stats", stats_command))
     application.add_handler(CommandHandler("reset", reset_command))
     application.add_handler(CommandHandler("challenge", challenge_command))
+
     wipe_conv_handler = ConversationHandler(
         entry_points=[CommandHandler('wipe', wipe_command)],
         states={
@@ -760,14 +767,10 @@ def main():
     # Handler for edited messages
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
     
-    # Schedule the reset job
-    asyncio.run(schedule_goal_reset_job(application))
-    
-    job_queue = application.job_queue  # Initialize the JobQueue    
-    # Start the nightly goal_status reset task
-    job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=1, minute=0))
+    # Schedule the reset job using job_queue
+    job_queue = application.job_queue
+    job_queue.run_daily(reset_goal_status, time=datetime.time(hour=2, minute=0, second=0))
 
-    
     # Start the bot
     application.run_polling()
 
