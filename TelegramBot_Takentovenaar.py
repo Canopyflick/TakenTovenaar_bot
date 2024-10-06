@@ -767,9 +767,9 @@ async def reset_goal_status(context):
         conn.rollback()
 
 async def roll_dice(update, context):
-    user_message = update.user_message
-    user_id = update.user.id
-    chat_id = update.chat.id
+    user_message = update.message.text
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
     try:
         score = fetch_score(update)
         if score > 0:
