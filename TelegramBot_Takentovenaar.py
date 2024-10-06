@@ -728,13 +728,6 @@ async def schedule_goal_reset_job(application):
 
         
 
-
-import os
-import datetime
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters
-
-# (Other imports and code)
-
 def main():
     # Fetch the API token from environment variables
     token = os.getenv('TELEGRAM_BOT_TOKEN')
