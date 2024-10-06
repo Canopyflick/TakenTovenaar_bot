@@ -597,33 +597,7 @@ async def handle_regular_message(update, context):
 
     # Dice-roll
     elif user_message.isdigit() and 1 <= int(user_message) <= 6:
-        # Send the dice and capture the message object
-        
-        dice_message = await context.bot.send_dice(
-        chat_id=update.message.chat_id,
-        reply_to_message_id=update.message.message_id
-    )
-    
-        # Extract the value that the user guessed
-        user_guess = int(user_message)
-    
-        # Check the outcome of the dice roll
-        rolled_value = dice_message.dice.value
-        await asyncio.sleep(4)
-    
-        # Give a reply based on the rolled value
-        if rolled_value == user_guess:
-            await context.bot.send_message(
-            chat_id=update.message.chat_id, 
-            text=f"🎉",
-            reply_to_message_id=update.message.message_id
-        )
-        else:
-            await context.bot.send_message(
-            chat_id=update.message.chat_id, 
-            text=f"nope.",
-            reply_to_message_id=update.message.message_id
-        )
+        dice_roll(update, context)
 
     # Nightly reset simulation
     elif user_message.isdigit() and 666:    
@@ -780,6 +754,51 @@ async def reset_goal_status(context):
     except Exception as e:
         print(f"Error resetting goal status: {e}")
         conn.rollback()
+
+async def dice_roll(update, context):
+    user_message = update.user_message
+    try:
+        # score = fetch_score()
+        if 5>3:
+            
+            # Send the dice and capture the message object
+            dice_message = await context.bot.send_dice(
+            chat_id=update.message.chat_id,
+            reply_to_message_id=update.message.message_id
+        )
+            # Extract the value that the user guessed
+            user_guess = int(user_message)
+    
+            # Check the outcome of the dice roll
+            rolled_value = dice_message.dice.value
+            await asyncio.sleep(4)
+    
+            # Give a reply based on the rolled value
+            if rolled_value == user_guess:
+                await context.bot.send_message(
+                chat_id=update.message.chat_id, 
+                text=f"🎉",
+                reply_to_message_id=update.message.message_id
+            )
+                await context.bot.send_message( 
+                text=f"_+4 punten_", parse_mode="Markdown",
+                reply_to_message_id=update.message.message_id
+            )
+            else:
+                await context.bot.send_message(
+                chat_id=update.message.chat_id, 
+                text=f"nope.\n_-1 punt_", parse_mode="Markdown",
+                reply_to_message_id=update.message.message_id
+            )
+        else:
+            await context.bot.send_message(
+            chat_id=update.message.chat_id, 
+            text=f"Je hebt niet genoeg punten om te dobbelen 🧙‍♂️",
+            reply_to_message_id=update.message.message_id
+        )
+
+    except Exception as e:
+        print (f"Error: {e}")
 
 
 # Schedule the job
