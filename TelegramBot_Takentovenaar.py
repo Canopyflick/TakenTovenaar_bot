@@ -35,21 +35,25 @@ cursor = conn.cursor()
 try:
     # Function to get existing columns
     def get_existing_columns(cursor, table_name):
-        cursor.execute(f"""
-    SELECT column_name 
-    FROM information_schema.columns 
-    WHERE table_name='{table_name}';
-""")
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = %s AND table_schema = 'public';
+        """, (table_name,))
         return [info[0] for info in cursor.fetchall()]
-    
+
     # Function to add missing columns
     def add_missing_columns(cursor, table_name, desired_columns):
         existing_columns = get_existing_columns(cursor, table_name)
         for column_name, column_definition in desired_columns.items():
             if column_name not in existing_columns:
-                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition};")
-                print(f"Added column {column_name} to {table_name}")
-            
+                try:
+                    cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_definition};")
+                    print(f"Added column {column_name} to {table_name}")
+                except Exception as e:
+                    print(f"Error adding column {column_name}: {e}")
+                    conn.rollback()  # Roll back the specific column addition if it fails
+
     # Desired columns with definitions
     desired_columns = {
         'user_id': 'INTEGER',
@@ -59,10 +63,8 @@ try:
         'score': 'INTEGER DEFAULT 0',
         'today_goal_status': "TEXT DEFAULT 'not set'",
         'today_goal_text': "TEXT DEFAULT ''",
-        'pending_challenge': 'TEXT DEFAULT "{}"', # Store challenges as JSON string
+        'pending_challenge': 'TEXT DEFAULT \'{}\'',  # Escaped JSON string
         'first_name': 'TEXT'
-        # Add any new columns here
-        # 'new_column': "TEXT DEFAULT ''",
     }
 
     # Create the table if it doesn't exist
@@ -76,19 +78,20 @@ try:
             score INTEGER DEFAULT 0,
             today_goal_status TEXT DEFAULT 'not set',
             today_goal_text TEXT DEFAULT '',
-            pending_challenge TEXT DEFAULT '{}',  
+            pending_challenge TEXT DEFAULT '{}',
             PRIMARY KEY (user_id, chat_id)
         )
     ''')
     conn.commit()
 
-
     # Add missing columns
     add_missing_columns(cursor, 'users', desired_columns)
     conn.commit()
+
 except Exception as e:
     print(f"Error updating database schema: {e}")
     conn.rollback()
+
 
 try:
     cursor.execute('SELECT 1')
