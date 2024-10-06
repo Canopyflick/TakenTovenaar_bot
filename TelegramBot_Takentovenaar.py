@@ -178,9 +178,6 @@ def fetch_score(update):
         return 0  # Return a default value in case of error
 
 
-        
-
-
 def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
     # Define system messages based on the message_type
     if message_type == 'classification':
@@ -772,7 +769,7 @@ async def reset_goal_status(context):
 async def dice_roll(update, context):
     user_message = update.user_message
     try:
-        score = fetch_score()
+        score = fetch_score(update)
         if score > 0:
             # Send the dice and capture the message object
             dice_message = await context.bot.send_dice(
