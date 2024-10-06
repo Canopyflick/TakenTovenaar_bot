@@ -612,12 +612,12 @@ async def handle_regular_message(update, context):
 
     # Nightly reset simulation
     elif user_message.isdigit() and 666:    
-        completion_time = datetime.datetime.now().strftime("%sH:%sM")
+        completion_time = datetime.now().strftime("%sH:%sM")
         # Reset goal status
         try:
             cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
             conn.commit()
-            print("666 Goal status reset at", datetime.datetime.now())
+            print("666 Goal status reset at", datetime.now())
             await context.bot.send_message(chat_id=update.message.chat_id, text="_EMERGENCY RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
         except Exception as e:
             conn.rollback()  # Rollback the transaction on error
@@ -686,7 +686,7 @@ async def handle_goal_setting(update, user_id, chat_id):
 async def check_goal_compatibility(update, goal_text, user_message):
     messages = [
                 {"role": "system", "content": "Controleer of een bericht zou kunnen rapporteren over het behalen van een gesteld doel. Antwoord alleen met 'Ja' of 'Nee'."},
-                {"role": "user", "content": f"Het gestelde doel is {goal_text} en het bericht is {user_message}"}
+                {"role": "user", "content": f"Het gestelde doel is: {goal_text} en het bericht is: {user_message}"}
             ]
     assistant_response = await send_openai_request(messages, temperature=0.1)
     print(f"check_goal_compatibility: {messages}\n\n\nUitkomst check: {assistant_response}")
@@ -716,7 +716,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
             update_user_goal(user_id, chat_id, goal_text)
         
         
-            completion_time = datetime.datetime.now().strftime("%sH:%sM")
+            completion_time = datetime.now().strftime("%sH:%sM")
             # Update user's goal status and statistics
             cursor.execute('''
                 UPDATE users 
@@ -756,7 +756,7 @@ async def reset_goal_status(context):
         # Reset goal status for all users
         cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
         conn.commit()
-        print("Goal status reset at", datetime.datetime.now())
+        print("Goal status reset at", datetime.now())
 
         # Send reset message to all active chats
         for chat_id in chat_ids:
@@ -804,6 +804,7 @@ async def roll_dice(update, context):
                 reply_to_message_id=update.message.message_id
             )
                 await context.bot.send_message( 
+                chat_id=update.message.chat_id, 
                 text=f"_+4 punten_", parse_mode="Markdown",
                 reply_to_message_id=update.message.message_id
             )
