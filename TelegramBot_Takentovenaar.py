@@ -9,7 +9,11 @@ import asyncio
 import re
 import json
 import psycopg2
+import pytz
+from datetime import datetime
 
+berlin_tz = pytz.timezone('Europe/Berlin')
+berlin_time = datetime.now(berlin_tz)
 
 
 # Initialize the OpenAI client
@@ -574,7 +578,7 @@ async def handle_regular_message(update, context):
     #    await update.message.reply_text("@Anne-Cathrine, ben je al aan het lezen? 🧙‍♂️😘")
     # Send into the void
     elif user_message == 'oké en we zijn weer live':
-        await context.bot.send_message(chat_id=update.message.chat_id, text="Database reset hihi, allemaal ONvoLDoEnDe 🧙‍♂️\n\nMaar we zijn weer live 🧙‍", parse_mode="Markdown")
+        await context.bot.send_message(chat_id=update.message.chat_id, text="Database gereset hihi, allemaal ONvoLDoEnDe! 🧙‍♂️\n\nMaar we zijn weer live 🧙‍♂️", parse_mode="Markdown")
     elif user_message == 'whoops':
         await context.bot.send_message(chat_id=update.message.chat_id, text="*Ik ben voorlopig kapot. Tot later!* 🧙‍♂️", parse_mode="Markdown")
     # Dice-roll
