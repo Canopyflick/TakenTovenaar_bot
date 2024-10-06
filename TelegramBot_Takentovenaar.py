@@ -115,7 +115,7 @@ try:
     print("Database connection successful")
 except Exception as e:
     print(f"Database connection error: {e}")
-    conn.rollback
+    conn.rollback()
 
 # Storing all column names of the users table in columns variable (eg: 'today_goal_text') 
 # Fetch column names safely
@@ -135,7 +135,7 @@ try:
         columns = []
 except Exception as e:
     print(f"Error fetching column date: {e}")
-    conn.rollback
+    conn.rollback()
 
 
 # Helper functions to reduce bloat/increase modularity
@@ -326,7 +326,7 @@ async def reset_command(update, context):
             conn.commit()
         except Exception as e:
             print(f"Error resetting goal in database: {e}")
-            conn.rollback
+            conn.rollback()
         
         await update.message.reply_text("Je doel voor vandaag is gereset 🧙‍♂️\n_-1 punt_", parse_mode="Markdown")
     else:
@@ -390,7 +390,7 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit
     except Exception as e:
         print(f"Error subtracting point (rolled back): {e}")
-        conn.rollback
+        conn.rollback()
     
 
 # Define a state for the conversation
@@ -418,7 +418,7 @@ async def confirm_wipe(update, context):
             conn.commit()
         except Exception as e:
             print(f"Error wiping database after confirm_wipe: {e}")
-            conn.rollback
+            conn.rollback()
         await update.message.reply_text("Je gegevens zijn gewist 🕳️")
     else:
         await update.message.reply_text("Wipe geannuleerd 🚷")
@@ -438,7 +438,7 @@ def update_user_goal(user_id, chat_id, goal_text):
         conn.commit()
     except Exception as e:
         print(f"Error in update_user_goal: {e}")
-        conn.rollback
+        conn.rollback()
     
 # Function to check if user has set a goal today
 def has_goal_today(user_id, chat_id):
@@ -608,7 +608,7 @@ async def handle_regular_message(update, context):
 
     # Dice-roll
     elif user_message.isdigit() and 1 <= int(user_message) <= 6:
-        await dice_roll(update, context)
+        await roll_dice(update, context)
 
     # Nightly reset simulation
     elif user_message.isdigit() and 666:    
@@ -661,7 +661,7 @@ async def handle_goal_setting(update, user_id, chat_id):
         except Exception as e:
             await update.message.reply_text("Doelstatusprobleempje. Probeer het later opnieuw.")
             print(f"Error updating today_goal_status: {e}")
-            conn.rollback
+            conn.rollback()
             return
         
         # Send confirmation message
@@ -730,7 +730,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                                     , parse_mode="Markdown")
     except Exception as e:
         print(f"Error in goal_completion: {e}")
-        conn.rollback
+        conn.rollback()
         return
 
 # Assistant_response == 'Overig'  
@@ -766,8 +766,10 @@ async def reset_goal_status(context):
         print(f"Error resetting goal status: {e}")
         conn.rollback()
 
-async def dice_roll(update, context):
+async def roll_dice(update, context):
     user_message = update.user_message
+    user_id = update.user.id
+    chat_id = update.chat.id
     try:
         score = fetch_score(update)
         if score > 0:
@@ -795,6 +797,18 @@ async def dice_roll(update, context):
                 reply_to_message_id=update.message.message_id
             )
             else:
+                try:
+                    # subtract 1 point
+                    cursor.execute('''
+                                   UPDATE users
+                                   SET score = score - 1
+                                   WHERE user_id = %s AND chat_id = %s
+                                   ''', (user_id, chat_id))
+                    conn.commit()
+                except Exception as e:
+                    print(f"Error resetting goal in database: {e}")
+                    conn.rollback()
+                    
                 await context.bot.send_message(
                 chat_id=update.message.chat_id, 
                 text=f"nope.\n_-1 punt_", parse_mode="Markdown",
