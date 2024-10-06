@@ -597,7 +597,7 @@ async def handle_regular_message(update, context):
 
     # Dice-roll
     elif user_message.isdigit() and 1 <= int(user_message) <= 6:
-        dice_roll(update, context)
+        await dice_roll(update, context)
 
     # Nightly reset simulation
     elif user_message.isdigit() and 666:    
