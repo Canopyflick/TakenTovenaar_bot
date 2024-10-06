@@ -153,6 +153,7 @@ def fetch_goal_text(update):
 def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
     # Define system messages based on the message_type
     if message_type == 'classification':
+        print("system prompt: classification message")
         system_message = (
             "Jij classificeert een berichtje van een gebruiker in een Telegramgroep "
             "in een van de volgende drie groepen: Doelstelling, Klaar of Overig. "
@@ -161,6 +162,7 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
             "dan is dat 'Klaar'. Alle andere gevallen zijn 'Overig'. Antwoord alleen met 'Doelstelling', 'Klaar' of 'Overig'."
         )
     elif message_type == 'other':
+        print("system prompt: other message")
         system_message = (
             "Jij bent @TakenTovenaar_bot, de enige bot in een accountability-Telegramgroep van vrienden. "
             "Gedraag je cheeky en mysterieus, maar streef bovenal naar waarheid. "
@@ -171,6 +173,7 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
             "Een back-and-forth met de user is dus niet mogelijk."
         )
     elif message_type == 'sleepy':
+        print("system prompt: sleepy message")
         system_message = ("Geef antwoord alsof je slaapdronken en verward bent, een beetje van het padje af misschien. Maximaal 3 zinnen.")
     else:
          raise ValueError("Invalid message_type. Must be 'classification' or 'other' or 'sleepy'.")
@@ -180,16 +183,17 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
     
     # Include the goal text if available
     if goal_text:
+        print(f"user prompt: Het ingestelde doel van de gebruiker is: {goal_text}")
         messages.append({"role": "user", "content": f"Het ingestelde doel van de gebruiker is: {goal_text}"})
     
-    # Include the user's message, confused bot gets less info
+    # Include the user_message, confused bot gets less info
     if message_type == 'sleepy':
         user_content = user_message
     else:
         user_content = f"Een berichtje van {update.effective_user.first_name}: {user_message}"
     if bot_last_response:
         user_content += f" (Reactie op: {bot_last_response})"
-    
+    print(f"user prompt: user_content")
     messages.append({"role": "user", "content": user_content})
     
     return messages
@@ -433,10 +437,13 @@ async def analyze_message(update, context):
     try:
         if update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
             await analyze_bot_reply(update, context)
+            print("analyze_message > analyze_bot_reply")
         elif update.message and '@TakenTovenaar_bot' in update.message.text:
             await analyze_bot_mention(update, context)
+            print("analyze_message > analyze_bot_mention")
         else:
             await analyze_regular_message(update, context)
+            print("analyze_message > analyze_regular_message")
     except Exception as e:
         await update.message.reply_text("Er ging iets mis in analyze_message, probeer het later opnieuw.")
         print(f"Error: {e}")    
@@ -463,6 +470,7 @@ async def analyze_bot_reply(update, context):
             bot_last_response=bot_last_response
         )
         assistant_response = await send_openai_request(messages, temperature=0.1)
+        print(f"analyze_bot_reply > classification: {assistant_response}")
         # Handle the OpenAI response
         if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             rand_value = random.random()
@@ -477,10 +485,13 @@ async def analyze_bot_reply(update, context):
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
         elif assistant_response == 'Doelstelling':
             await handle_goal_setting(update, user_id, chat_id)
+            print("analyze_bot_reply > handle_goal_setting")
         elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
             await handle_goal_completion(update, context, user_id, chat_id, goal_text)
+            print("analyze_bot_reply > handle_goal_completion")
         else:
             await handle_unclassified_mention(update)
+            print("analyze_bot_reply > handle_unclassified_mention")
 
     except Exception as e:
         await update.message.reply_text("Er ging iets misss, probeer het later opnieuw.")
@@ -501,7 +512,7 @@ async def analyze_bot_mention(update, context):
         messages = prepare_openai_messages(update, user_message, message_type='classification', goal_text=goal_text)
         print(messages)
         assistant_response = await send_openai_request(messages, temperature=0.1)
-
+        print(f"analyze_bot_mention > classification: {assistant_response}")
         if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             
             rand_value = random.random()
@@ -516,10 +527,13 @@ async def analyze_bot_mention(update, context):
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
         elif assistant_response == 'Doelstelling':
             await handle_goal_setting(update, user_id, chat_id)
+            print("analyze_bot_mention > handle_goal_setting")
         elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
             await handle_goal_completion(update, context, user_id, chat_id, goal_text)
+            print("analyze_bot_mention > handle_goal_completion")
         else:
             await handle_unclassified_mention(update)
+            print("analyze_bot_mention > unclassified_mention")
 
     except Exception as e:
         await update.message.reply_text("Er ging iets mis, probeer het later opnieuw.")
@@ -531,6 +545,7 @@ async def analyze_regular_message(update, context):
     chat_id = update.effective_chat.id
     user_message = update.message.text
     goal_text = fetch_goal_text(update)
+    
     # Prepare and send OpenAI messages
     # messages = prepare_openai_messages(update, user_message, 'classification', goal_text)
     # assistant_response = await send_openai_request(messages, temperature=0.1)
@@ -542,6 +557,7 @@ async def analyze_regular_message(update, context):
     #     await handle_goal_completion(update, context, user_id, chat_id, goal_text)
     # else:
     await handle_regular_message(update, context)
+    print("analyze_regular_message > handle_regular_message")
 
 async def handle_regular_message(update, context):
     user_id = update.effective_user.id
@@ -558,7 +574,7 @@ async def handle_regular_message(update, context):
     #    await update.message.reply_text("@Anne-Cathrine, ben je al aan het lezen? 🧙‍♂️😘")
     # Send into the void
     elif user_message == 'oké en we zijn weer live':
-        await context.bot.send_message(chat_id=update.message.chat_id, text="Database reset hihi, allemaal ONvoLDoEnDe 🧙‍♂️", parse_mode="Markdown")
+        await context.bot.send_message(chat_id=update.message.chat_id, text="Database reset hihi, allemaal ONvoLDoEnDe 🧙‍♂️\n\nMaar we zijn weer live 🧙‍", parse_mode="Markdown")
     elif user_message == 'whoops':
         await context.bot.send_message(chat_id=update.message.chat_id, text="*Ik ben voorlopig kapot. Tot later!* 🧙‍♂️", parse_mode="Markdown")
     # Dice-roll
@@ -639,11 +655,11 @@ async def handle_goal_setting(update, user_id, chat_id):
 
 async def check_goal_compatibility(update, goal_text, user_message):
     messages = [
-                {"role": "system", "content": "Controleer of een verslaggeving past bij een gesteld doel. Antwoord alleen met 'Ja' of 'Nee'."},
-                {"role": "user", "content": f"Het gestelde doel is {goal_text} en de verslaggeving is {user_message}"}
+                {"role": "system", "content": "Controleer of een bericht zou kunnen rapporteren over het behalen van een gesteld doel. Antwoord alleen met 'Ja' of 'Nee'."},
+                {"role": "user", "content": f"Het gestelde doel is {goal_text} en het bericht is {user_message}"}
             ]
     assistant_response = await send_openai_request(messages, temperature=0.1)
-    print(f"Uitkomst van de compatibility check: {assistant_response}")
+    print(f"check_goal_compatibility: {messages}\n\n\nUitkomst check: {assistant_response}")
     return assistant_response
 
 # Assistant_response == 'Klaar'             
