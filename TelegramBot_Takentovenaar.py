@@ -728,7 +728,7 @@ def main():
     
     job_queue = application.job_queue  # Initialize the JobQueue    
     # Start the nightly goal_status reset task
-    application.job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=1, minute=0))
+    job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=1, minute=0))
 
     
     # Start the bot
