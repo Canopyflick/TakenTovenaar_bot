@@ -346,7 +346,11 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"confirmation message")
 
     # Subtract 1 point from the challenger's score
-    cursor.execute('UPDATE users SET score = score - 1 WHERE user_id = %s AND chat_id = %s', (challenger_id, update.effective_chat.id))
+    try:
+        cursor.execute('UPDATE users SET score = score - 1 WHERE user_id = %s AND chat_id = %s', (challenger_id, update.effective_chat.id))
+    except Exception as e:
+        print(f"Error subtracting point (rolled back): {e}")
+        conn.rollback
     
 
 # Define a state for the conversation
@@ -391,6 +395,7 @@ def update_user_goal(user_id, chat_id, goal_text):
         ON CONFLICT (user_id, chat_id) DO UPDATE SET
         today_goal_text = EXCLUDED.today_goal_text
     ''', (user_id, chat_id, goal_text))
+        conn.commit()
     except Exception as e:
         print(f"Error in update_user_goal: {e}")
         conn.rollback
@@ -699,10 +704,10 @@ async def reset_goal_status(context):
         try:
             cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
             conn.commit()
+            print("Goal status reset at", datetime.datetime.now())
         except Exception as e:
             print(f"Error resetting goal status: {e}")
-        print("Goal status reset at", datetime.datetime.now())
-        conn.rollback
+            conn.rollback
         await context.bot.send_message(chat_id=context.job.chat_id, text="_Dagelijkse doelen gereset_  🧙‍♂️", parse_mode="Markdown")
 
         
