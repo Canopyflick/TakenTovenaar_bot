@@ -724,13 +724,7 @@ async def reset_goal_status(context):
 # Schedule the job
 async def schedule_goal_reset_job(application):
     job_queue = application.job_queue
-    chat_id = SOME_CHAT_ID  # Replace with the appropriate chat ID or pass it dynamically if needed
-    job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=2), context={'chat_id': chat_id})
-
-if __name__ == '__main__':
-    application = ApplicationBuilder().token(token).build()
-    asyncio.run(schedule_goal_reset_job(application))
-    application.run_polling()
+    job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=2))
 
         
 
@@ -765,6 +759,9 @@ def main():
     
     # Handler for edited messages
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
+    
+    # Schedule the reset job
+    asyncio.run(schedule_goal_reset_job(application))
     
     job_queue = application.job_queue  # Initialize the JobQueue    
     # Start the nightly goal_status reset task
