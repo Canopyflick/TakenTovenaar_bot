@@ -256,7 +256,7 @@ async def stats_command(update, context):
         stats_message = f"*Statistieken voor {escape_markdown_v2(update.effective_user.first_name)}*\n"
         stats_message += f"🏆 Score: {score} punten\n"
         stats_message += f"🎯 Doelentotaal: {total_goals}\n"
-        stats_message += f"✅ Voltooid: {completed_goals} {escape_markdown_v2(f'({completion_rate:.1f}%s)')}\n"
+        stats_message += f"✅ Voltooid: {completed_goals} {escape_markdown_v2(f'({completion_rate:.1f}%)')}\n"
         
         # Check for the three possible goal statuses
         if today_goal_status == 'set':
@@ -763,8 +763,8 @@ def main():
         application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
     
         # Schedule the reset job using job_queue
-        job_queue = application.job_queue
-        job_queue.run_daily(reset_goal_status, time=datetime.time(hour=2, minute=0, second=0))
+        # job_queue = application.job_queue
+        # job_queue.run_daily(reset_goal_status, time=datetime.time(hour=2, minute=0, second=0))
 
         # Start the bot
         application.run_polling()
