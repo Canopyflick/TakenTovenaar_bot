@@ -617,10 +617,9 @@ async def handle_regular_message(update, context):
         else:
             await context.bot.send_message(
             chat_id=update.message.chat_id, 
-            text=f"Nope.",
+            text=f"nope.",
             reply_to_message_id=update.message.message_id
         )
-            await context.bot.send_message(chat_id=update.message.chat_id, text=f"Nope.")
 
     # Nightly reset simulation
     elif user_message.isdigit() and 666:    
