@@ -729,6 +729,7 @@ async def schedule_goal_reset_job(application):
         
 
 def main():
+    print("Entering main function")
     try:
         # Fetch the API token from environment variables
         token = os.getenv('TELEGRAM_BOT_TOKEN')
@@ -767,8 +768,11 @@ def main():
 
         # Start the bot
         application.run_polling()
+        print("Exiting main function normally")
     except Exception as e:
-        print(f"These are the errors from main: {e}")
-
+        print(f"Error in main function: {e}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        print(traceback.format_exc())
 if __name__ == '__main__':
     main()
