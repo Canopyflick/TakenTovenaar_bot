@@ -594,9 +594,24 @@ async def handle_regular_message(update, context):
         await context.bot.send_message(chat_id=update.message.chat_id, text="Database gereset hihi, allemaal ONvoLDoEnDe! 🧙‍♂️\n\nMaar we zijn weer live 🧙‍♂️", parse_mode="Markdown")
     elif user_message == 'whoops':
         await context.bot.send_message(chat_id=update.message.chat_id, text="*Ik ben voorlopig kapot. Tot later!* 🧙‍♂️", parse_mode="Markdown")
+
     # Dice-roll
     elif user_message.isdigit() and 1 <= int(user_message) <= 6:
-        await context.bot.send_dice(chat_id=update.message.chat_id)
+        # Send the dice and capture the message object
+        dice_message = await context.bot.send_dice(chat_id=update.message.chat_id)
+    
+        # Extract the value that the user guessed
+        user_guess = int(user_message)
+    
+        # Check the outcome of the dice roll
+        rolled_value = dice_message.dice.value
+    
+        # Give a reply based on the rolled value
+        if rolled_value == user_guess:
+            await context.bot.send_message(chat_id=update.message.chat_id, text=f"🎉")
+        else:
+            await context.bot.send_message(chat_id=update.message.chat_id, text=f"Nope.")
+
     # Nightly reset simulation
     elif user_message.isdigit() and 666:    
         completion_time = datetime.datetime.now().strftime("%sH:%sM")
