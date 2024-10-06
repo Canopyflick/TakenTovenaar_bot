@@ -118,9 +118,6 @@ except Exception as e:
     conn.rollback
 
 
-
-
-
 # Helper functions to reduce bloat/increase modularity
 def fetch_goal_text(update):
     user_id = update.effective_user.id
@@ -145,6 +142,9 @@ def fetch_goal_text(update):
     except Exception as e:
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
+    
+
+        
 
 
 def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
@@ -331,16 +331,20 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # #     return  # Stop further execution if the challenger has already challenged the user today
 
     # Check if the challenged user has a goal set for today #moet ook werken als result leeg is 
-    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (challenged_id, chat_id))
-    result = cursor.fetchone()
-    if result is None:
-        goal_status = 'not set'
+    try:
+        cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (challenged_id, chat_id))
+        result = cursor.fetchone()
+        if result is None:
+            goal_status = 'not set'
 
-    if goal_status == 'not set':
-        await update.message.reply_text(f"🚫 {challenged_name} heeft vandaag nog geen doel ingesteld! 🧙‍♂️")
-    if goal_status.startswith("Done"):
-        await update.message.reply_text(f"🚫 {challenged_name} heeft vandaag het doel al behaald! 🧙‍♂️")
-        return
+        if goal_status == 'not set':
+            await update.message.reply_text(f"🚫 {challenged_name} heeft vandaag nog geen doel ingesteld! 🧙‍♂️")
+        if goal_status.startswith("Done"):
+            await update.message.reply_text(f"🚫 {challenged_name} heeft vandaag het doel al behaald! 🧙‍♂️")
+            return
+    except Exception as e:
+        print(f"Error selecting goal: {e}")
+   
     
     # Vanaf hier is het menens
     await update.message.reply_text(f"confirmation message")
@@ -348,6 +352,7 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Subtract 1 point from the challenger's score
     try:
         cursor.execute('UPDATE users SET score = score - 1 WHERE user_id = %s AND chat_id = %s', (challenger_id, update.effective_chat.id))
+        conn.commit
     except Exception as e:
         print(f"Error subtracting point (rolled back): {e}")
         conn.rollback
@@ -402,15 +407,21 @@ def update_user_goal(user_id, chat_id, goal_text):
     
 # Function to check if user has set a goal today
 def has_goal_today(user_id, chat_id):
-    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
-    result = cursor.fetchone()
-    return result and result[0] == 'set'
+    try:
+        cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
+        result = cursor.fetchone()
+        return result and result[0] == 'set'
+    except Exception as e:
+        print(f"Error has_goal_today: {e}")
 
 # Function to check if user has finished a goal today
 def finished_goal_today(user_id, chat_id):
-    cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
-    result = cursor.fetchone()
-    return result and result[0].startswith("Done")
+    try:
+        cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
+        result = cursor.fetchone()
+        return result and result[0].startswith("Done")
+    except Exception as e:
+        print(f"Error finished_goal_today: {e}")
 
 bot_message_ids = {}
 
@@ -739,7 +750,7 @@ def main():
     application.add_handler(wipe_conv_handler)
     
     # Bind the message analysis to any non-command text messages
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.UpdateType.MESSAGE, analyze_message))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
     
     # Handler for edited messages
     application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
