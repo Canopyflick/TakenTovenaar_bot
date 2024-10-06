@@ -729,43 +729,46 @@ async def schedule_goal_reset_job(application):
         
 
 def main():
-    # Fetch the API token from environment variables
-    token = os.getenv('TELEGRAM_BOT_TOKEN')
-    if token is None:
-        raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables")
+    try:
+        # Fetch the API token from environment variables
+        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        if token is None:
+            raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables")
     
-    # Create the bot application with ApplicationBuilder
-    application = ApplicationBuilder().token(token).build()
+        # Create the bot application with ApplicationBuilder
+        application = ApplicationBuilder().token(token).build()
     
-    # Bind the commands to their respective functions
-    application.add_handler(CommandHandler("start", start_command))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(CommandHandler("stats", stats_command))
-    application.add_handler(CommandHandler("reset", reset_command))
-    application.add_handler(CommandHandler("challenge", challenge_command))
+        # Bind the commands to their respective functions
+        application.add_handler(CommandHandler("start", start_command))
+        application.add_handler(CommandHandler("help", help_command))
+        application.add_handler(CommandHandler("stats", stats_command))
+        application.add_handler(CommandHandler("reset", reset_command))
+        application.add_handler(CommandHandler("challenge", challenge_command))
 
-    wipe_conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('wipe', wipe_command)],
-        states={
-            CONFIRM_WIPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_wipe)],
-        },
-        fallbacks=[],
-        conversation_timeout=30
-    )
-    application.add_handler(wipe_conv_handler)
+        wipe_conv_handler = ConversationHandler(
+            entry_points=[CommandHandler('wipe', wipe_command)],
+            states={
+                CONFIRM_WIPE: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_wipe)],
+            },
+            fallbacks=[],
+            conversation_timeout=30
+        )
+        application.add_handler(wipe_conv_handler)
     
-    # Bind the message analysis to any non-command text messages
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
+        # Bind the message analysis to any non-command text messages
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
     
-    # Handler for edited messages
-    application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
+        # Handler for edited messages
+        application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
     
-    # Schedule the reset job using job_queue
-    job_queue = application.job_queue
-    job_queue.run_daily(reset_goal_status, time=datetime.time(hour=2, minute=0, second=0))
+        # Schedule the reset job using job_queue
+        job_queue = application.job_queue
+        job_queue.run_daily(reset_goal_status, time=datetime.time(hour=2, minute=0, second=0))
 
-    # Start the bot
-    application.run_polling()
+        # Start the bot
+        application.run_polling()
+    except Exception as e:
+        print(f"These are the errors from main: {e}")
 
 if __name__ == '__main__':
     main()
