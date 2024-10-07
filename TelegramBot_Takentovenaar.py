@@ -257,7 +257,7 @@ async def filosofie_command(update, context):
         if goal_text is not '':
                 messages = prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
-                await update.message.reply_text(f"{philosophic_message}Of, zoals mijn grootvader altijd zei:\n_{grandpa_quote}_✨", parse_mode="Markdown")
+                await update.message.reply_text(f"{philosophic_message}Of, zoals mijn grootvader altijd zei:\n✨{grandpa_quote}✨", parse_mode="Markdown")
         else:  
             await update.message.reply_text(philosophic_message)
     except Exception as e:
