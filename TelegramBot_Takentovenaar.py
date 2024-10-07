@@ -10,6 +10,7 @@ import re
 import json
 import psycopg2
 import pytz
+from datetime import time
 from datetime import datetime
 
 berlin_tz = pytz.timezone('Europe/Berlin')
@@ -262,14 +263,14 @@ async def filosofie_command(update, context):
     "your chances of finding it are very good. Because, of all the things in the world, "
     "you're sure to find some of them 🧙‍♂️",
             "Je bent wat je eet 🧙‍♂️",
-            "If the human brain were so simple that we could understand it, we would be so simple that we couldn't. 🧙‍♂️",       
+            "If the human brain were so simple that we could understand it, we would be so simple that we couldn't 🧙‍♂️",       
             "Believe in yourself 🧙‍♂️",  
             "Hoge loofbomen, dik in het blad, overhuiven de weg 🧙‍♂️",   
             "It is easy to find a logical and virtuous reason for not doing what you don't want to do 🧙‍♂️",  
             "Our actions are like ships which we may watch set out to sea, and not know when or with what cargo they will return to port 🧙‍♂️",
             "A sufficiently intimate understanding of mistakes is indistinguishable from mastery 🧙‍♂️",
             "He who does not obey himself will be commanded 🧙‍♂️",
-            "Elke dag is er wel iets waarvan je zegt: als ik die taak nou eens zou afronden,"  
+            "Elke dag is er wel iets waarvan je zegt: als ik die taak nou eens zou afronden, "  
     "dan zou m'n dag meteen een succes zijn. Maar ik heb er geen zin in. Weet je wat, ik stel het "
     "me als doel in de Telegramgroep en dan ben ik misschien wat gemotiveerder om het te doen xx🧙‍♂️",
             "All evils are due to a lack of Telegram bots 🧙‍♂️",
@@ -645,7 +646,7 @@ async def handle_regular_message(update, context):
             await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
     except Exception as e:
         print(f"Error reacting to message: {e}")
-    if len(user_message) > 11 and random.random() < 0.06:
+    if len(user_message) > 11 and random.random() < 0.05:
         messages = prepare_openai_messages(update, user_message, 'sleepy')
         assistant_response = await send_openai_request(messages, "gpt-4o")
         await update.message.reply_text(assistant_response)
@@ -799,7 +800,7 @@ async def handle_unclassified_mention(update):
     assistant_response = await send_openai_request(messages, "gpt-4o")
     await update.message.reply_text(assistant_response)
 
-        
+# nightly reset        
 async def reset_goal_status(context):
     try:
         # Fetch all unique chat IDs from the users table
@@ -887,15 +888,7 @@ async def roll_dice(update, context):
         )
 
     except Exception as e:
-        print (f"Error: {e}")
-
-
-# Schedule the job
-async def schedule_goal_reset_job(application):
-    job_queue = application.job_queue
-    job_queue.run_repeating(reset_goal_status, interval=24*60*60, first=datetime.time(hour=2))
-
-        
+        print (f"Error: {e}")        
 
 def main():
     print("Entering main function")
@@ -941,8 +934,19 @@ def main():
         application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
     
         # Schedule the reset job using job_queue
-        # job_queue = application.job_queue
-        # job_queue.run_daily(reset_goal_status, time=datetime.time(hour=2, minute=0, second=0))
+        print("Setting up job queue")
+        try:
+            # Schedule the reset job using job_queue
+            job_queue = application.job_queue
+            reset_time = time(hour=2, minute=0, second=0)
+            print(f"Scheduling daily reset for {reset_time}")
+            job_queue.run_daily(reset_goal_status, time=reset_time)
+            print("Job queue set up successfully")
+        except Exception as e:
+            print(f"Error setting up job queue: {e}")
+            print(f"Error type: {type(e).__name__}")
+            import traceback
+            print(traceback.format_exc())
         print("********************* END OF MAIN *********************")
         # Start the bot
         application.run_polling()
