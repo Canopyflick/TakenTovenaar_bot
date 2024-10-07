@@ -671,7 +671,7 @@ async def handle_regular_message(update, context):
         try:
             cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
             conn.commit()
-            print("666 Goal status reset at", datetime.now())
+            print(f"666 Goal status reset at {completion_time}", datetime.now())
             await context.bot.send_message(chat_id=update.message.chat_id, text="_SCORE STATUS RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
         except Exception as e:
             conn.rollback()  # Rollback the transaction on error
