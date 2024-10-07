@@ -254,24 +254,28 @@ async def filosofie_command(update, context):
         chat_id = update.effective_chat.id
         goal_text = fetch_goal_text(update)
         philosophical_messages = [
-            "Hätte hätte, Fahrradkette. 🧙‍♂️",  # Message 1
-            "千里之行，始于足下. 🧙‍♂️",        
-            "Ask, believe, receive. 🧙‍♂️",   
+            "Hätte hätte, Fahrradkette 🧙‍♂️",  # Message 1
+            "千里之行，始于足下 🧙‍♂️",        
+            "Ask, believe, receive 🧙‍♂️",   
             "A few words on looking for things. When you go looking for something specific, "
-    "your chances of finding it are very bad. Because of all the things in the world, "
+    "your chances of finding it are very bad. Because, of all the things in the world, "
     "you're only looking for one of them. When you go looking for anything at all, "
-    "your chances of finding it are very good. Because of all the things in the world, "
-    "you're sure to find some of them. 🧙‍♂️",
-            "Je bent wat je eet. 🧙‍♂️",
+    "your chances of finding it are very good. Because, of all the things in the world, "
+    "you're sure to find some of them 🧙‍♂️",
+            "Je bent wat je eet 🧙‍♂️",
             "If the human brain were so simple that we could understand it, we would be so simple that we couldn't. 🧙‍♂️",       
-            "Believe in yourself. 🧙‍♂️",  
-            "Hoge loofbomen, dik in het blad, overhuiven de weg. 🧙‍♂️",   
-            "It is easy to find a logical and virtuous reason for not doing what you don't want to do. 🧙‍♂️",  
-            "Our actions are like ships which we may watch set out to sea, and not know when or with what cargo they will return to port. 🧙‍♂️",
-            "A sufficiently intimate understanding of mistakes is indistinguishable from mastery. 🧙‍♂️",
+            "Believe in yourself 🧙‍♂️",  
+            "Hoge loofbomen, dik in het blad, overhuiven de weg 🧙‍♂️",   
+            "It is easy to find a logical and virtuous reason for not doing what you don't want to do 🧙‍♂️",  
+            "Our actions are like ships which we may watch set out to sea, and not know when or with what cargo they will return to port 🧙‍♂️",
+            "A sufficiently intimate understanding of mistakes is indistinguishable from mastery 🧙‍♂️",
             "He who does not obey himself will be commanded 🧙‍♂️",
-            "Elke dag is er wel iets waarvan je zegt: als ik die taak nou eens zou afronden, dan is de dag meteen een succes. Maar ik heb er geen zin in. Weet je wat, ik stel het als doel in de Telegramgroep en dan ben ik misschien wat gemotiveerder om het te doen. xx🧙‍♂️",
-            "All evils are due to a lack of Telegram bots 🧙‍♂️"     # Message 14
+            "Elke dag is er wel iets waarvan je zegt: als ik die taak nou eens zou afronden,"  
+    "dan zou m'n dag meteen een succes zijn. Maar ik heb er geen zin in. Weet je wat, ik stel het "
+    "me als doel in de Telegramgroep en dan ben ik misschien wat gemotiveerder om het te doen xx🧙‍♂️",
+            "All evils are due to a lack of Telegram bots 🧙‍♂️",
+            "Te laat noch te vroeg arriveert nooit de takentovenaar 🧙‍♂️" # Message 15
+
         ]
 
         # Randomly pick a message with 10% chance
