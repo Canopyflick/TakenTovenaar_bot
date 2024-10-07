@@ -247,7 +247,10 @@ async def send_openai_request(messages, model="gpt-4o-mini", temperature=None):
 # Asynchronous command functions
 async def start_command(update, context):
     await update.message.reply_text('Hoi! 👋\n\nIk ben Taeke Toekema Takentovenaar. Stuur me een berichtje als je wilt, bijvoorbeeld om je dagdoel in te stellen of voortgang te rapporteren. Gebruik "@" met mijn naam \n\nKlik op >> /help << voor meer opties')
-    
+
+async def filosofie_command(update, context):
+    await update.message.reply_text('Er is altijd wel iets. 千里之行，始于足下. Je bent wat je eet.')
+        
 async def help_command(update, context):
     help_message = (
         'Hier zijn de beschikbare commando\'s:\n'
@@ -255,7 +258,8 @@ async def help_command(update, context):
         '❓/help - Dit lijstje\n'
         '📊 /stats - Je persoonlijke stats\n'
         '🤔 /reset - Pas je dagdoel aan\n'
-        '🗑️ /wipe - Wis je gegevens hier'
+        '🗑️ /wipe - Wis je gegevens in deze chat'
+        '💭 /filosofie - De gedachte erachter'
     )
     await update.message.reply_text(help_message)
 
@@ -397,15 +401,13 @@ async def challenge_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 CONFIRM_WIPE = range(1)
 
 async def wipe_command(update, context):
-    user_id = update.effective_user.id
-    
     # Ask for confirmation
     await update.message.reply_text(
         "Weet je zeker dat je al je voortgang wilt laten wegtoveren? 🧙‍♂️\n\nTyp 'JA' om te bevestigen, of iets anders om te annuleren."
     )
-
     # Set the conversation state
     return CONFIRM_WIPE
+
 
 async def confirm_wipe(update, context):
     user_id = update.effective_user.id
@@ -805,7 +807,7 @@ async def roll_dice(update, context):
             )
                 await context.bot.send_message( 
                 chat_id=update.message.chat_id, 
-                text=f"_+4 punten_", parse_mode="Markdown",
+                text=f"_+5 punten_", parse_mode="Markdown",
                 reply_to_message_id=update.message.message_id
             )
             else:
