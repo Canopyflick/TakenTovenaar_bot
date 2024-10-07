@@ -861,6 +861,7 @@ def main():
         application.add_handler(CommandHandler("start", start_command))
         application.add_handler(CommandHandler("help", help_command))
         print("main 2/6")
+        application.add_handler(CommandHandler("filosofie", filosofie_command))
         application.add_handler(CommandHandler("stats", stats_command))
         application.add_handler(CommandHandler("reset", reset_command))
         application.add_handler(CommandHandler("challenge", challenge_command))
