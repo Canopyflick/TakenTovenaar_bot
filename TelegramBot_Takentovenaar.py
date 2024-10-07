@@ -260,12 +260,12 @@ async def filosofie_command(update, context):
         if has_goal_today(user_id, chat_id):
                 messages = await prepare_openai_messages(update, message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
+                await update.message.reply_text(f"{philosophic_message}\nOf, zoals mijn grootvader altijd zei: {grandpa_quote}✨")
         else:  
             await update.message.reply_text(philosophic_message)
-            return
     except Exception as e:
         print(f"Error in filosofie_command: {e}")
-    await update.message.reply_text(f"{philosophic_message}\nOf, zoals mijn grootvader altijd zei: {grandpa_quote}✨")
+ 
     
         
 async def help_command(update, context):
