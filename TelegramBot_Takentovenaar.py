@@ -819,6 +819,24 @@ async def reset_goal_status(context):
     except Exception as e:
         print(f"Error resetting goal status: {e}")
         conn.rollback()
+        
+def get_last_reset_time():
+    try:
+        cursor.execute("SELECT last_reset_time FROM bot_status")
+        result = cursor.fetchone()
+        return result[0] if result else None
+    except Exception as e:
+        print(f"Error getting last reset time: {e}")
+        return None
+
+def update_last_reset_time():
+    try:
+        current_time = datetime.now()
+        cursor.execute("UPDATE bot_status SET last_reset_time = ?", (current_time,))
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating last reset time: {e}")
+        conn.rollback()
 
 async def roll_dice(update, context):
     user_message = update.message.text
