@@ -246,7 +246,7 @@ async def send_openai_request(messages, model="gpt-4o-mini", temperature=None):
 
 # Asynchronous command functions
 async def start_command(update, context):
-    await update.message.reply_text('Hoi! 👋\n\nIk ben Taeke Toekema Takentovenaar. Stuur me een berichtje als je wilt, bijvoorbeeld om je dagdoel in te stellen of voortgang te rapporteren. Gebruik "@" met mijn naam \n\nKlik op >> /help << voor meer opties')
+    await update.message.reply_text('Hoi! 👋\n\nIk ben Taeke Toekema Takentovenaar. Stuur me een berichtje als je wilt, bijvoorbeeld om je dagdoel in te stellen of af te sluiten. Gebruik "@" met mijn naam, bijvoorbeeld zo:\n"@TakenTovenaar_bot ik wil vandaag naar frisbeetraining" \n\nKlik op >> /help << voor meer opties')
 
 async def filosofie_command(update, context):
     try:
@@ -646,7 +646,7 @@ async def handle_regular_message(update, context):
             await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
     except Exception as e:
         print(f"Error reacting to message: {e}")
-    if len(user_message) > 11 and random.random() < 0.05:
+    if len(user_message) > 11 and random.random() < 0.04:
         messages = prepare_openai_messages(update, user_message, 'sleepy')
         assistant_response = await send_openai_request(messages, "gpt-4o")
         await update.message.reply_text(assistant_response)
@@ -665,8 +665,8 @@ async def handle_regular_message(update, context):
         await roll_dice(update, context)
 
     # Nightly reset simulation
-    elif user_message.isdigit() and 666:    
-        completion_time = datetime.now().strftime("%sH:%sM")
+    elif user_message == '666':    
+        completion_time = datetime.now().strftime("%H:%M")
         # Reset goal status
         try:
             cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
@@ -675,7 +675,8 @@ async def handle_regular_message(update, context):
             await context.bot.send_message(chat_id=update.message.chat_id, text="_SCORE STATUS RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
         except Exception as e:
             conn.rollback()  # Rollback the transaction on error
-            print(f"Error: {e}")        
+            print(f"Error: {e}")
+            
 
 # Assistant_response == 'Doelstelling'          
 async def handle_goal_setting(update, user_id, chat_id):
@@ -768,9 +769,8 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
             user_id = update.effective_user.id
             chat_id = update.effective_chat.id
             update_user_goal(user_id, chat_id, goal_text)
-        
-        
-            completion_time = datetime.now().strftime("%sH:%sM")
+
+            completion_time = datetime.now().strftime("%H:%M")
             # Update user's goal status and statistics
             cursor.execute('''
                 UPDATE users 
