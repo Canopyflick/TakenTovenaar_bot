@@ -15,12 +15,11 @@ from datetime import datetime
 berlin_tz = pytz.timezone('Europe/Berlin')
 berlin_time = datetime.now(berlin_tz)
 
-
 # Initialize the OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 # For local development
-LOCAL_DB_URL = "postgresql://username:password@localhost/your_database_name"
+LOCAL_DB_URL = "postgresql://postgres:OmtePosten@localhost/mydb"
 
 # Use environment variable for Heroku, fallback to local for development
 DATABASE_URL = os.getenv('DATABASE_URL', LOCAL_DB_URL)
@@ -149,13 +148,13 @@ def fetch_goal_text(update):
             goal_text = result[0]
             if goal_text != '':
                 print(f"Goal text found: {goal_text}")
-                return goal_text
+                return goal_text # Goal is set
             else:
                 print("No goal set for today.")
                 return ''
         else:
             print("Goal text not found.")
-            return ''  # Return empty string if no goal text is found
+            return None  # Return empty string if no goal text is found
     except Exception as e:
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
@@ -274,7 +273,7 @@ async def filosofie_command(update, context):
     "dan zou m'n dag meteen een succes zijn. Maar ik heb er geen zin in. Weet je wat, ik stel het "
     "me als doel in de Telegramgroep en dan ben ik misschien wat gemotiveerder om het te doen xx🧙‍♂️",
             "All evils are due to a lack of Telegram bots 🧙‍♂️",
-            "Te laat noch te vroeg arriveert (n)ooit de takentovenaar 🧙‍♂️" # Message 15
+            "Te laat, noch te vroeg, arriveert (n)ooit de takentovenaar 🧙‍♂️" # Message 15
 
         ]
 
@@ -282,7 +281,7 @@ async def filosofie_command(update, context):
         def get_random_philosophical_message():
             return random.choice(philosophical_messages)
         philosophical_message = get_random_philosophical_message()
-        if goal_text is not '':
+        if goal_text != '' and goal_text != None:
                 messages = prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
                 await update.message.reply_text(f" {philosophical_message}\n\n Of, zoals mijn grootvader altijd zei:\n✨{grandpa_quote}✨", parse_mode="Markdown")
@@ -639,7 +638,10 @@ async def handle_regular_message(update, context):
     message_id = update.message.message_id
     try:
         if random.random() < 0.1:
-            reaction = ["👍"]
+            if random.random() < 0.75:
+                reaction = ["👍"] 
+            else:
+                reaction = ["❤️"] 
             await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
     except Exception as e:
         print(f"Error reacting to message: {e}")
@@ -790,7 +792,7 @@ async def handle_unclassified_mention(update):
     chat_id = update.effective_chat.id
     user_message = update.message.text
     goal_text = fetch_goal_text(update)
-    goal_text=goal_text if goal_text else None
+    goal_text = goal_text if goal_text else None
     bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
     
     messages = prepare_openai_messages(update, user_message, 'other', goal_text, bot_last_response)
@@ -898,10 +900,21 @@ async def schedule_goal_reset_job(application):
 def main():
     print("Entering main function")
     try:
-        # Fetch the API token from environment variables
-        token = os.getenv('TELEGRAM_BOT_TOKEN')
+        # Check if running locally or on Heroku
+        if DATABASE_URL == LOCAL_DB_URL:
+            print("using local DB")
+            # Running locally, use local bot token
+            token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN')
+            token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN').strip()  # Strip any extra spaces or newlines
+        else:
+            # Running on Heroku, use Heroku bot token
+            token = os.getenv('HEROKU_TELEGRAM_BOT_TOKEN')
+            token = os.getenv('HEROKU_TELEGRAM_BOT_TOKEN').strip()  # Strip any extra spaces or newlines
+
         if token is None:
             raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables")
+        # Initialize the bot with the selected token
+        print(f"Using token: {token}")
     
         # Create the bot application with ApplicationBuilder
         application = ApplicationBuilder().token(token).build()
