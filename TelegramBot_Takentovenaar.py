@@ -908,7 +908,7 @@ def main():
             token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN').strip()  # Strip any extra spaces or newlines
         else:
             # Running on Heroku, use Heroku bot token
-            token = os.getenv('HEROKU_TELEGRAM_BOT_TOKEN')
+            token = os.getenv('TELEGRAM_BOT_TOKEN')
 
         if token is None:
             raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables")
