@@ -253,7 +253,7 @@ async def filosofie_command(update, context):
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
         goal_text = fetch_goal_text(update)
-        philosophic_messages = [
+        philosophical_messages = [
             "Hätte hätte, Fahrradkette. 🧙‍♂️",  # Message 1
             "千里之行，始于足下. 🧙‍♂️",        
             "Ask, believe, receive. 🧙‍♂️",   
@@ -275,15 +275,15 @@ async def filosofie_command(update, context):
         ]
 
         # Randomly pick a message with 10% chance
-        def get_random_philosophic_message():
-            return random.choice(messages)
-        philosophic_message = get_random_philosophic_message()
+        def get_random_philosophical_message():
+            return random.choice(philosophical_messages)
+        philosophical_message = get_random_philosophical_message()
         if goal_text is not '':
                 messages = prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
-                await update.message.reply_text(f" {philosophic_messages}\n\n Of, zoals mijn grootvader altijd zei:\n✨{grandpa_quote}✨", parse_mode="Markdown")
+                await update.message.reply_text(f" {philosophical_message}\n\n Of, zoals mijn grootvader altijd zei:\n✨{grandpa_quote}✨", parse_mode="Markdown")
         else:  
-            await update.message.reply_text(philosophic_message)
+            await update.message.reply_text(philosophical_message)
     except Exception as e:
         print(f"Error in filosofie_command: {e}")
  
