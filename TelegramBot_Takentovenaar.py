@@ -179,6 +179,8 @@ def fetch_score(update):
 
 
 def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
+    # Create the message list with the appropriate system message
+    messages = [{"role": "system", "content": system_message}]
     # Define system messages based on the message_type
     if message_type == 'classification':
         print("system prompt: classification message")
@@ -203,12 +205,14 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
     elif message_type == 'sleepy':
         print("system prompt: sleepy message")
         system_message = ("Geef antwoord alsof je slaapdronken en verward bent, een beetje van het padje af misschien. Maximaal 3 zinnen.")
+    elif message_type == 'grandpa quote':
+        print("system prompt: grandpa quote message")
+        system_message = ("Je bent een beetje cheeky, diepzinnig, mysterieus en bovenal wijs. Verzin een uitspraak die je opa zou kunnen hebben over een gegeven doel.")
+        messages.append({"role": "user", "content": f"{goal_text}"})
+        return messages
     else:
-         raise ValueError("Invalid message_type. Must be 'classification' or 'other' or 'sleepy'.")
+         raise ValueError("Invalid message_type. Must be 'classification' or 'other' or 'sleepy' or 'grandpa quote'.")
         
-    # Create the message list with the appropriate system message
-    messages = [{"role": "system", "content": system_message}]
-    
     # Include the goal text if available
     if goal_text:
         print(f"user prompt: Het ingestelde doel van de gebruiker is: {goal_text}")
@@ -249,7 +253,21 @@ async def start_command(update, context):
     await update.message.reply_text('Hoi! 👋\n\nIk ben Taeke Toekema Takentovenaar. Stuur me een berichtje als je wilt, bijvoorbeeld om je dagdoel in te stellen of voortgang te rapporteren. Gebruik "@" met mijn naam \n\nKlik op >> /help << voor meer opties')
 
 async def filosofie_command(update, context):
-    await update.message.reply_text('Er is altijd wel iets. 千里之行，始于足下. Je bent wat je eet.')
+    try:
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        goal_text = fetch_goal_text(update)
+        philosophic_message = "Hätte hätte, Fahrradkette. 千里之行，始于足下. Je bent wat je eet. 🧙‍♂️"
+        if has_goal_today(user_id, chat_id):
+                messages = await prepare_openai_messages(update, message_type = 'grandpa quote', goal_text=goal_text)
+                grandpa_quote = await send_openai_request(messages, "gpt-4o")    
+        else:  
+            await update.message.reply_text(philosophic_message)
+            return
+    except Exception as e:
+        print(f"Error in filosofie_command: {e}")
+    await update.message.reply_text(f"{philosophic_message}\nOf, zoals mijn grootvader altijd zei: {grandpa_quote}✨")
+    
         
 async def help_command(update, context):
     help_message = (
