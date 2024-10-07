@@ -1,7 +1,7 @@
 ﻿import os
 import random
 from tempfile import TemporaryFile
-from telegram import User, Update
+from telegram import User, Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, filters, ContextTypes
 from openai import OpenAI
 import datetime
@@ -278,7 +278,7 @@ async def filosofie_command(update, context):
 
         ]
 
-        # Randomly pick a message with 10% chance
+        # Randomly pick a message
         def get_random_philosophical_message():
             return random.choice(philosophical_messages)
         philosophical_message = get_random_philosophical_message()
@@ -636,6 +636,9 @@ async def handle_regular_message(update, context):
     chat_id = update.effective_chat.id
     user_message = update.message.text
     goal_text = fetch_goal_text(update)
+    if random.random() < 0.5:
+        reaction = ["👍"]
+        await context.bot.setMessageReaction(update, reaction=reaction)
     if len(user_message) > 11 and random.random() < 0.06:
         messages = prepare_openai_messages(update, user_message, 'sleepy')
         assistant_response = await send_openai_request(messages, "gpt-4o")
