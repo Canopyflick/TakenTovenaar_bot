@@ -638,7 +638,8 @@ async def handle_regular_message(update, context):
     goal_text = fetch_goal_text(update)
     if random.random() < 0.5:
         reaction = ["👍"]
-        await context.bot.setMessageReaction(update, reaction=reaction)
+        message_id = update.message.message_id
+        await context.bot.setMessageReaction(update, message_id=message_id, reaction=reaction)
     if len(user_message) > 11 and random.random() < 0.06:
         messages = prepare_openai_messages(update, user_message, 'sleepy')
         assistant_response = await send_openai_request(messages, "gpt-4o")
