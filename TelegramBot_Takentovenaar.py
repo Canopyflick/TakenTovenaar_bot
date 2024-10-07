@@ -256,11 +256,11 @@ async def filosofie_command(update, context):
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
         goal_text = fetch_goal_text(update)
-        philosophic_message = "Hätte hätte, Fahrradkette. 千里之行，始于足下. Ask, believe, receive. 🧙‍♂️"
-        if has_goal_today(user_id, chat_id):
+        philosophic_message = "Hätte hätte, Fahrradkette. 千里之行，始于足下. Ask, believe, receive. 🧙‍♂️\n\n"
+        if goal_text is not '':
                 messages = prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
-                await update.message.reply_text(f"{philosophic_message}\nOf, zoals mijn grootvader altijd zei: {grandpa_quote}✨")
+                await update.message.reply_text(f"{philosophic_message}Of, zoals mijn grootvader altijd zei:\n_{grandpa_quote}_✨", parse_mode="Markdown")
         else:  
             await update.message.reply_text(philosophic_message)
     except Exception as e:
