@@ -179,8 +179,6 @@ def fetch_score(update):
 
 
 def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
-    # Create the message list with the appropriate system message
-    messages = [{"role": "system", "content": system_message}]
     # Define system messages based on the message_type
     if message_type == 'classification':
         print("system prompt: classification message")
@@ -208,11 +206,12 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
     elif message_type == 'grandpa quote':
         print("system prompt: grandpa quote message")
         system_message = ("Je bent een beetje cheeky, diepzinnig, mysterieus en bovenal wijs. Verzin een uitspraak die je opa zou kunnen hebben over een gegeven doel.")
+        messages = [{"role": "system", "content": system_message}]
         messages.append({"role": "user", "content": f"{goal_text}"})
         return messages
     else:
          raise ValueError("Invalid message_type. Must be 'classification' or 'other' or 'sleepy' or 'grandpa quote'.")
-        
+    messages = [{"role": "system", "content": system_message}]        
     # Include the goal text if available
     if goal_text:
         print(f"user prompt: Het ingestelde doel van de gebruiker is: {goal_text}")
