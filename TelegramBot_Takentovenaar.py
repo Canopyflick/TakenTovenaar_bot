@@ -274,7 +274,7 @@ async def filosofie_command(update, context):
     "dan zou m'n dag meteen een succes zijn. Maar ik heb er geen zin in. Weet je wat, ik stel het "
     "me als doel in de Telegramgroep en dan ben ik misschien wat gemotiveerder om het te doen xx🧙‍♂️",
             "All evils are due to a lack of Telegram bots 🧙‍♂️",
-            "Te laat noch te vroeg arriveert nooit de takentovenaar 🧙‍♂️" # Message 15
+            "Te laat noch te vroeg arriveert (n)ooit de takentovenaar 🧙‍♂️" # Message 15
 
         ]
 
