@@ -142,23 +142,20 @@ except Exception as e:
 def fetch_goal_text(update):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    
     try:
-        # Check if the user has a goal for today
-        if has_goal_today(user_id, chat_id):
-            cursor.execute('SELECT today_goal_text FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
-            result = cursor.fetchone()
-            
-            if result and result[0]:
-                print(f"Goal text found: {result[0]}")
-                return result[0]  # Return the goal text if found
+        cursor.execute('SELECT today_goal_text FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
+        result = cursor.fetchone()
+        if result:
+            goal_text = result[0]
+            if goal_text != '':
+                print(f"Goal text found: {goal_text}")
+                return goal_text
             else:
-                print("No goal text found for today.")
-                return ''  # Return empty string if no goal text is found
+                print("No goal set for today.")
+                return ''
         else:
-            print("The user has no goal for today.")
-            return ''  # Return empty string if the user has no goal for today
-
+            print("Goal text not found.")
+            return ''  # Return empty string if no goal text is found
     except Exception as e:
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
