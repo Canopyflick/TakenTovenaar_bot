@@ -258,7 +258,7 @@ async def filosofie_command(update, context):
         goal_text = fetch_goal_text(update)
         philosophic_message = "Hätte hätte, Fahrradkette. 千里之行，始于足下. Je bent wat je eet. 🧙‍♂️"
         if has_goal_today(user_id, chat_id):
-                messages = await prepare_openai_messages(update, message_type = 'grandpa quote', goal_text=goal_text)
+                messages = await prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
                 await update.message.reply_text(f"{philosophic_message}\nOf, zoals mijn grootvader altijd zei: {grandpa_quote}✨")
         else:  
@@ -275,8 +275,8 @@ async def help_command(update, context):
         '❓/help - Dit lijstje\n'
         '📊 /stats - Je persoonlijke stats\n'
         '🤔 /reset - Pas je dagdoel aan\n'
-        '🗑️ /wipe - Wis je gegevens in deze chat'
-        '💭 /filosofie - De gedachte erachter'
+        '🗑️ /wipe - Wis je gegevens in deze chat\n'
+        '💭 /filosofie - De gedachten erachter'
     )
     await update.message.reply_text(help_message)
 
