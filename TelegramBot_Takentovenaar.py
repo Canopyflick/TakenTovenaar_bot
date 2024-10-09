@@ -20,8 +20,8 @@ from datetime import datetime, time, timedelta
 # Load .env file if running locally, and let it take precedent over any other source for API keys 
 if 'DYNO' not in os.environ:  # 'DYNO' is a Heroku-specific environment variable
     from dotenv import load_dotenv
-    load_dotenv()
-load_dotenv(override=True)
+    load_dotenv(override=True)
+
 
 # Get OpenAI API key from environment variable (works in both local and Heroku)
 api_key = os.getenv('OPENAI_API_KEY')
