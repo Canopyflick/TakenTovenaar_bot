@@ -17,8 +17,10 @@ from datetime import datetime, time, timedelta
 # berlin_tz = pytz.timezone('Europe/Berlin')
 # berlin_time = datetime.now(berlin_tz)
 
-
-# Load .env file if running locally, and let it take precedent over any other source for API keys (should still work in Heroku, cause there nothing will be loaded)
+# Load .env file if running locally, and let it take precedent over any other source for API keys 
+if 'DYNO' not in os.environ:  # 'DYNO' is a Heroku-specific environment variable
+    from dotenv import load_dotenv
+    load_dotenv()
 load_dotenv(override=True)
 
 # Get OpenAI API key from environment variable (works in both local and Heroku)
