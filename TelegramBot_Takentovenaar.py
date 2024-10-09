@@ -6,7 +6,6 @@ from tempfile import TemporaryFile
 from telegram import User, Update, Bot
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ConversationHandler, CallbackContext, filters, ContextTypes
 from openai import OpenAI
-from dotenv import load_dotenv
 import asyncio
 import re
 import json
@@ -17,11 +16,14 @@ from datetime import datetime, time, timedelta
 # berlin_tz = pytz.timezone('Europe/Berlin')
 # berlin_time = datetime.now(berlin_tz)
 
-# Load .env file if running locally (not on Heroku)
-if not os.getenv('HEROKU_ENV'):  # Check if HEROKU_ENV is not set
-    from dotenv import load_dotenv
-    load_dotenv(override=True)
-
+# Only load dotenv if running locally (not on Heroku)
+if not os.getenv('HEROKU_ENV'):  # Check if HEROKU_ENV is not set, meaning it's local
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(override=True)
+    except ImportError:
+        pass  # In case dotenv isn't installed, ignore this when running locally
+   
 
 # Get OpenAI API key from environment variable (works in both local and Heroku)
 api_key = os.getenv('OPENAI_API_KEY')
