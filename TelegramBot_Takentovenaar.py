@@ -991,14 +991,14 @@ async def handle_regular_message(update, context):
     user_message = update.message.text
     message_id = update.message.message_id
     try:
-        reaction = random_emoji
-        await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
-        # if random.random() < 1:
-        #     if random.random() < 0.:
-        #         reaction = "👍" 
-        #     else:
-        #         reaction = "💯" 
-        #     await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
+        # reaction = random_emoji
+        # await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
+        if random.random() < 0.05:
+            if random.random() < 0.75:
+                reaction = "👍" 
+            else:
+                reaction = "💯" 
+            await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
     except Exception as e:
         print(f"Error reacting to message: {e}")
     if len(user_message) > 11 and random.random() < 0.02:
@@ -1012,8 +1012,8 @@ async def handle_regular_message(update, context):
     # Send into the void
     elif user_message == 'oké en we zijn weer live':
         await context.bot.send_message(chat_id=update.message.chat_id, text="Database gereset hihi, allemaal ONvoLDoEnDe! 🧙‍♂️\n\nMaar nu werk ik weer 🧙‍♂️", parse_mode="Markdown")
-    elif user_message == "Guess who's back":
-            await context.bot.send_message(chat_id=update.message.chat_id, text="Tovenaartje terug 🧙‍♂️", parse_mode="Markdown")        
+    elif user_message == "Guess who's back...":
+            await context.bot.send_message(chat_id=update.message.chat_id, text="Tovenaartje terug ✨🧙‍♂️", parse_mode="Markdown")        
     elif user_message == 'whoops..!':
         await context.bot.send_message(chat_id=update.message.chat_id, text="*Ik ben voorlopig kapot. Tot later!* 🧙‍♂️", parse_mode="Markdown")
 
@@ -1397,10 +1397,9 @@ def main():
         # Handler for edited messages
         application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
         
-        print("********************* END OF MAIN *********************")
         # Start the bot
         application.run_polling()
-        print("Exiting main function normally")
+        print("********************* END OF MAIN *********************")
     except Exception as e:
         print(f"Error in main function: {e}")
         print(f"Error type: {type(e).__name__}")
