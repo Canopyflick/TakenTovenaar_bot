@@ -459,7 +459,7 @@ async def check_use_of_special(update, context, special_type):
     
     # Check if the command is a reply to another message
     if update.message.reply_to_message is None:
-        await update.message.reply_text(f"Je moet deze command als reply gebruiken op het bericht van degene die je wilt {special_type_verb}! 🧙‍♂️")
+        await update.message.reply_text(f"🚫 Je moet deze command als reply gebruiken op het bericht van degene die je wilt {special_type_verb}! 🧙‍♂️")
         print(f"{special_type_singular} couldn't be used by {engager_name}")
         return False
     
@@ -473,7 +473,7 @@ async def check_use_of_special(update, context, special_type):
     else:
         special_type_verb = special_type_singular + 'en'
     
-    if engaged.first_name == "TestTovenaar_bot":
+    if engaged.first_name == "TakenTovenaar_bot":
         await update.message.reply_text(f"🚫 Y O U  S H A L L  N O T  P A S S ! 🚫🧙‍♂️\n_      a {special_type_singular} to me..._", parse_mode = "Markdown")
         print(f"{special_type_singular} couldn't be used by {engager_name}")
         return False
