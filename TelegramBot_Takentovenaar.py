@@ -17,8 +17,8 @@ from datetime import datetime, time, timedelta
 # berlin_tz = pytz.timezone('Europe/Berlin')
 # berlin_time = datetime.now(berlin_tz)
 
-# Load .env file if running locally, and let it take precedent over any other source for API keys 
-if 'DYNO' not in os.environ:  # 'DYNO' is a Heroku-specific environment variable
+# Load .env file if running locally (not on Heroku)
+if not os.getenv('HEROKU_ENV'):  # Check if HEROKU_ENV is not set
     from dotenv import load_dotenv
     load_dotenv(override=True)
 
