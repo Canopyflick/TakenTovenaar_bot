@@ -31,6 +31,7 @@ if not api_key:
     raise ValueError("OPENAI_API_KEY not found! Ensure it's set in the environment.")
 # Initialize the OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# print(f"__________OpenAI API Key_________:'\n{api_key}\n")
 
 # For local development
 LOCAL_DB_URL = "postgresql://postgres:OmtePosten@localhost/mydb"
@@ -41,7 +42,7 @@ DATABASE_URL = os.getenv('DATABASE_URL', LOCAL_DB_URL)
 # Use DATABASE_URL if available (Heroku), otherwise fallback to LOCAL_DB_URL
 DATABASE_URL = os.getenv('DATABASE_URL', os.getenv('LOCAL_DB_URL'))
 
-print(f"__________OpenAI API Key_________:'\n{api_key}\n")
+
 
 # Connect to the PostgreSQL database
 if os.getenv('DATABASE_URL'):  # Running on Heroku
@@ -123,18 +124,6 @@ try:
     ''', (two_am_last_night,))
     conn.commit()
 
-    # Alter user_id and chat_id to BIGINT if needed
-    try:
-        cursor.execute("""
-            ALTER TABLE users
-            ALTER COLUMN user_id TYPE BIGINT,
-            ALTER COLUMN chat_id TYPE BIGINT
-        """)
-        conn.commit()
-        print("Altered user_id and chat_id to BIGINT")
-    except Exception as e:
-        print(f"Error altering columns user_id and chat_id to BIGINT: {e}")
-        conn.rollback()
 
     # Add missing columns
     add_missing_columns(cursor, 'users', desired_columns)
@@ -165,7 +154,7 @@ try:
 
     if columns_result:
         columns = [column[0] for column in columns_result]  # Adjust if only one column per result
-        print("Columns result:", columns_result)  # Debugging
+        print("Columns result:\n", columns_result)  # Debugging
     else:
         print("No columns found for the users table.")
         columns = []
@@ -859,14 +848,14 @@ bot_message_ids = {}
 async def analyze_message(update, context):
     try:
         if update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
-            await analyze_bot_reply(update, context)
             print("analyze_message > analyze_bot_reply")
+            await analyze_bot_reply(update, context)          
         elif update.message and '@TakenTovenaar_bot' in update.message.text:
-            await analyze_bot_mention(update, context)
             print("analyze_message > analyze_bot_mention")
+            await analyze_bot_mention(update, context)           
         else:
-            await analyze_regular_message(update, context)
             print("analyze_message > analyze_regular_message")
+            await analyze_regular_message(update, context)
     except Exception as e:
         await update.message.reply_text("Er ging iets mis in analyze_message, probeer het later opnieuw.")
         print(f"Error: {e}")    
@@ -1000,7 +989,6 @@ async def handle_regular_message(update, context):
     first_name = update.effective_user.first_name
     chat_id = update.effective_chat.id
     user_message = update.message.text
-    goal_text = fetch_goal_text(update)
     message_id = update.message.message_id
     try:
         reaction = random_emoji
@@ -1266,7 +1254,7 @@ async def roll_dice(update, context):
     except Exception as e:
         print (f"Error: {e}")       
 
-# nightly reset        
+# nightly or catch-up reset        
 async def reset_goal_status(context_or_application):
     try:
         # Fetch all unique chat IDs from the users table
@@ -1284,7 +1272,7 @@ async def reset_goal_status(context_or_application):
         # Send reset message to all active chats
         bot = context_or_application.bot if hasattr(context_or_application, 'bot') else context_or_application # Because application is passed from catchup, and context from job queue
         for chat_id in chat_ids:
-            await bot.send_message(chat_id=chat_id, text="_Dagelijkse doelen gereset_  🧙‍♂️", parse_mode="Markdown")
+            await bot.send_message(chat_id=chat_id, text="🌄 _Dagelijkse doelen weggetoverd_ 🧙‍♂️📢", parse_mode="Markdown")
 
     except Exception as e:
         print(f"Error resetting goal status: {e}")
@@ -1318,7 +1306,7 @@ def update_last_reset_time():
 
 # Setup function 
 async def setup(application):
-    print("Setting up job queue")
+    print("\nSetting up job queue")
     try:
         # Schedule the reset job using job_queue
         job_queue = application.job_queue
@@ -1330,15 +1318,26 @@ async def setup(application):
         # Check if reset is needed on startup
         last_reset = get_last_reset_time()
         now = datetime.now()
-        print(f"Last reset time : {last_reset}")
+        print(f"\nLast reset time : {last_reset}")
         print(f"Current time    : {now}")
-        
-        if last_reset is None or (now - last_reset).total_seconds() >= 24 * 60 * 60 + 60: # 2:01 AM
-            print("Performing catch-up reset")
-            await reset_goal_status(application)
 
+        # Define scheduled reset time (2:00 AM)
+        reset_time_today = now.replace(hour=2, minute=0, second=0, microsecond=0)
+
+        # If it's after 2:00 AM today, the fallback checks if last reset was before 2:00 AM today
+        if now >= reset_time_today:
+            if last_reset is None or last_reset < reset_time_today:
+                # Perform the fallback reset
+                print("^ Perform catch-up reset ^\n")
+            else:
+                print("^ No catch-up reset needed ^\n")  
         else:
-            print("No catch-up reset needed")
+            # If it's before 2:00 AM today, the fallback checks if last reset was before 2:00 AM yesterday
+            reset_time_yesterday = reset_time_today - timedelta(days=1)
+            if last_reset is None or last_reset < reset_time_yesterday:
+                # Perform the fallback reset
+                print("^ Performing catch-up reset ^")
+                await reset_goal_status(application)
 
     except Exception as e:
         print(f"Error setting up job queue: {e}")
@@ -1347,28 +1346,28 @@ async def setup(application):
         print(traceback.format_exc())        
 
 def main():
-    print("Entering main function")
+    print("\nEntering main function\n")
     try:
         # Check if running locally or on Heroku
         if DATABASE_URL == LOCAL_DB_URL:
-            print("using local DB")
+            print("Using local Database")
             # Running locally, use local bot token
             token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN')
             token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN').strip()  # Strip any extra spaces or newlines
+            print(f"Using testtovenaar: {token}\n")
         else:
             # Running on Heroku, use Heroku bot token
             token = os.getenv('TELEGRAM_BOT_TOKEN')
+            print(f"\nUsing TakenTovenaar: {token}")
+            print("Using Heroku Database\n")
 
         if token is None:
             raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables")
-        # Initialize the bot with the selected token
-        print(f"Using token: {token}")
-    
+        
         # Create the bot application with ApplicationBuilder
         application = ApplicationBuilder().token(token).build()
         asyncio.get_event_loop().run_until_complete(setup(application))
 
-        
         # Bind the commands to their respective functions
         application.add_handler(CommandHandler(["start", "begroeting", "begin"], start_command))
         application.add_handler(CommandHandler("help", help_command))
