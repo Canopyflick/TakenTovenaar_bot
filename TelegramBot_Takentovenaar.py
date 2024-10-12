@@ -536,14 +536,29 @@ async def check_use_of_special(update, context, special_type):
             if entity.type == "text_mention":  # Detect if there's a direct user mention
                 print(f"this is engaged_name in entity type text_mention: {engaged_name}")
                 engaged = entity.user
-                engaged_id = entity.user.id  # Extract the mentioned user's ID
-                engaged_name = get_user_by_id(bot, engaged_id)
+                engaged_id = engaged.id  # Extract the mentioned user's ID
+                engaged_name = await get_first_name(user_id=engaged_id)
                 user_mentioned = True
                 print(f"Mentioned User ID: {engaged_id}\nMentioned User Name: {engaged_name}")  
             elif entity.type == "mention":  # Detect if there's a mention of a user with a username
                 username = message.text[entity.offset:entity.offset + entity.length]  # Extract the username from the message text
-                user_mentioned = True
-                print(f"Username mentioned: {username}, Cannot handle this yet. Have to build the logic to collect engaged id & name")
+                username = username.lstrip('@')
+                try:
+                    # Use the get_chat method to get the user details
+                    user = await global_bot.get_chat(username)  # This will return a Chat object
+                    if user.type == "private":  # Ensure it's a user and not a group or channel
+                        engaged_id = user.id  # Extract the user ID
+                        engaged_name = user.first_name
+                        print(f"Fetched User ID: {engaged_id}, Fetched Name: {engaged_name}")
+                        user_mentioned = True
+                    else:
+                        engaged_id = None
+                        print(f"The mentioned username is not a user.")
+                except Exception as e:
+                    print(f"Error fetching user by username {username}: {e}")
+                    engaged_id = None
+               
+                print(f"Username mentioned: {username}, engaged_name is {engaged_name}")
     print(f"\n\n\n\nUser mentioned: {user_mentioned}\n\n\n\n")            
     # In case of no mentions, replies are checked
                 
@@ -557,7 +572,7 @@ async def check_use_of_special(update, context, special_type):
             engaged_name = engaged.first_name
             print(f"Goed opletten nu, engaged is: {engaged}")
     
-    if engaged_name == "TakenTovenaar_bot":
+    if engaged_name == "TakenTovenaar_bot" or engaged_name == "TestTovenaar_bot":
         await update.message.reply_text(f"🚫 Y O U  S H A L L  N O T  P A S S ! 🚫🧙‍♂️\n_      a {special_type_singular} to me..._", parse_mode = "Markdown")
         print(f"{special_type_singular} couldn't be used by {engager_name}")
         return False
@@ -575,6 +590,7 @@ async def check_use_of_special(update, context, special_type):
             if goal_status == 'not set':
                 await update.message.reply_text(f"🚫 {engaged_name} heeft vandaag nog geen doel ingesteld! 🧙‍♂️")
                 print(f"{special_type_singular} couldn't be used by {engager_name}")
+                return False
             elif goal_status.startswith("Done"):
                 await update.message.reply_text(f"🚫 {engaged_name} heeft vandaag hun doel al behaald! 🧙‍♂️")
                 print(f"{special_type_singular} couldn't be used by {engager_name}")
@@ -598,7 +614,7 @@ async def check_use_of_special(update, context, special_type):
                 await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
                 print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
         else:
-            await update.message.reply_text(f"🚫 {engaged_name} staat (nog) niet in de database! 🧙‍♂️ \n(hij/zij moet eerst een doel stellen)")  #77
+            await update.message.reply_text(f"🚫 Deze persoon staat (nog) niet in de database! 🧙‍♂️ \n(hij/zij moet eerst een doel stellen)")  #77
             print(f"Engagement Failed op de valreep.")
 
 async def check_special_balance(engager_id, chat_id, special_type):
@@ -698,7 +714,13 @@ async def stats_command(update, context):
             if set_time:
                 set_time = set_time[0]
                 formatted_set_time = set_time.strftime("%H:%M")
-            stats_message += f"📅 Dagdoel: ingesteld om {escape_markdown_v2(formatted_set_time)}\n📝 {escape_markdown_v2(today_goal_text)}"
+            if await fetch_engagements(user_id):
+                escaped_emoji_string = await fetch_engagements(user_id)
+                stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}"
+                
+                
+            else:
+                stats_message += f"📅 Dagdoel: ingesteld om {escape_markdown_v2(formatted_set_time)}\n📝 {escape_markdown_v2(today_goal_text)}"
         elif today_goal_status.startswith('Done'):
             completion_time = today_goal_status.split(' ')[3]  # Extracts time from "Done today at H:M"
             stats_message += f"📅 Dagdoel: voltooid om {escape_markdown_v2(completion_time)}\n📝 ||{escape_markdown_v2(today_goal_text)}||"
@@ -713,6 +735,54 @@ async def stats_command(update, context):
         escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me een berichtje met je dagdoel om te beginnen (gebruik '@') 🧙‍♂️"),
         parse_mode="MarkdownV2"
     )
+        
+async def fetch_engagements(user_id):
+    try:
+        # Query to get pending engagements for the user, grouped by special_type
+        cursor.execute('''
+            SELECT special_type, COUNT(*)
+            FROM engagements
+            WHERE engager_id = %s AND status = 'pending'
+            GROUP BY special_type;
+        ''', (user_id,))
+
+        # Fetch all results
+        results = cursor.fetchall()
+        
+        # Initialize counts for each type
+        boost_count = 0
+        link_count = 0
+        challenge_count = 0
+
+        # Map the special types to their respective counts
+        for row in results:
+            special_type, count = row
+            if special_type == 'boosts':
+                boost_count = count
+            elif special_type == 'links':
+                link_count = count
+            elif special_type == 'challenges':
+                challenge_count = count
+        
+        # Build the final string of emojis
+        engagement_string = '⚡' * boost_count + '🔗' * link_count + '😈' * challenge_count
+
+        # Add parentheses around the emoji string
+        if engagement_string:
+            engagement_string = f"({engagement_string})"
+        else:
+            return False
+
+        # Call the escape_markdown_v2() function
+        escaped_string = escape_markdown_v2(engagement_string)
+
+        # Return the escaped engagement string
+        return escaped_string
+
+    except Exception as e:
+        print(f"Error fetching engagements: {e}")
+        return "Error fetching engagements."
+
 
 async def reset_command(update, context):
     user_id = update.effective_user.id
@@ -740,74 +810,37 @@ async def reset_command(update, context):
         await update.message.reply_text("Je hebt geen onvoltooid doel om te resetten 🧙‍♂️ \n(_Zie /stats voor je dagdoelstatus_).", parse_mode="Markdown")
         
 async def boost_command(update, context):
-    # Extract user_id from mention
-    entities = update.message.entities  # List of entities in the message
-    for entity in entities:
-        if entity.type == "mention": # @username
-            username = update.message.text[entity.offset::entity.offset + entity.length]
-            user = await context.bot.get_chat_member(update.effective_chat.id, username)
-            engaged_id = user.user.id
-            await handle_special_command(update, context, 'boosts', engaged_id)
-            return
-        elif entity.type == "invalid mention":
-            await update.message.reply_text("🚫 No valid user mentioned 🧙‍♂️")
-    if update.message.reply_to_message:
-        engaged = update.message.reply_to_message.from_user
-        engaged_id = engaged.id
-        await handle_special_command(update, context, 'boosts', engaged_id)        
-    else: 
-        await update.message.reply_text("🚫 Antwoord op iemands berichtje of gebruik een @-mention 🧙‍♂️")
-        return
+    await check_use_of_special(update, context, special_type="boosts")
+    return
+
+    # entities = update.message.entities  # List of entities in the message
+    # for entity in entities:
+    #     if entity.type == "mention": # @username
+    #         username = update.message.text[entity.offset::entity.offset + entity.length]
+    #         user = await context.bot.get_chat_member(update.effective_chat.id, username)
+    #         engaged_id = user.user.id
+    #         await handle_special_command(update, context, 'boosts', engaged_id)
+    #         return
+    #     elif entity.type == "invalid mention":
+    #         await update.message.reply_text("🚫 No valid user mentioned 🧙‍♂️")
+    # if update.message.reply_to_message:
+    #     engaged = update.message.reply_to_message.from_user
+    #     engaged_id = engaged.id
+    #     await handle_special_command(update, context, 'boosts', engaged_id)        
+    # else: 
+    #     await update.message.reply_text("🚫 Antwoord op iemands berichtje of gebruik een @-mention 🧙‍♂️")
+    #     return
 
 async def link_command(update, context):
-    await handle_special_command(update, context, 'links')
+    await check_use_of_special(update, context, 'links')
     return
 
 async def challenge_command(update, context):
-    await handle_special_command(update, context, 'challenges')
+    await check_use_of_special(update, context, 'challenges')
     return
 
 
-async def handle_special_command(update, context, special_type, engaged_id=None):
-    engager = update.effective_user
-    engager_id = engager.id
-    engager_name = engager.first_name
-    chat_id = update.effective_chat.id
-    
-    if await check_use_of_special(update, context, special_type) is False:
-        print(f"{special_type} couldn't be used by {engager_name}")
-        return
-    # exclude links and challenges for now
-    elif special_type == 'links' or special_type == 'challenges':
-        print(f"valid {special_type} tried by {engager_name}")
-        await update.message.reply_text(f"Nog eventjes geduld alstublieft, {special_type} werken nog niet 🧙‍♂️")
-        return
-    # properly engaged
-    engaged = update.message.reply_to_message.from_user 
-    engaged_id = engaged.id
-    engaged_name = engaged.first_name
-    print(f"Engaging \n{engaged}\n{engaged_id}\n{engaged_name}\nspecial_type: {special_type}")
-    # Check if the engager has a pending engage with the same user with the same special type
-    special_type_singular = special_type.rstrip('s')
-    cursor.execute('''
-        SELECT * FROM engagements 
-        WHERE engager_id = %s AND engaged_id = %s AND special_type = %s AND chat_id = %s AND status = 'pending'
-    ''', (engager_id, engaged_id, special_type, chat_id))
-    result = cursor.fetchone()
-    print(f"{result}")
-    if result:
-        # If an identical engagement exists, deny a second one
-        await update.message.reply_text(f"🚫 Je hebt al een {special_type_singular} uitstaan op {engaged_name} 🧙‍♂️")
-        return
-    else:
-        try:
-            await complete_new_engagement(cursor, engager_id, engaged_id, chat_id, special_type)
-            print(f"handle_special_command > complete_new_engagement")
-            await update.message.reply_text(f"Je hebt een {special_type_singular} op {engaged_name} gebruikt! 🧙‍♂️")
-        except Exception as e:
-            print(f"Error inserting new engagement: {e}")
-            return
-        return
+
     
 async def gift_command(update, context):
     if await check_chat_owner(update, context):
@@ -944,13 +977,16 @@ async def confirm_wipe(update, context):
     
     if user_response == 'JA':
         try:
-            cursor.execute('DELETE FROM engagements WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
+            cursor.execute('DELETE FROM engagements WHERE engager_id = %s AND chat_id = %s', (user_id, chat_id))
+            cursor.execute('DELETE FROM engagements WHERE engaged_id = %s AND chat_id = %s', (user_id, chat_id))
+            conn.commit()
             cursor.execute('DELETE FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
             conn.commit()
+            await update.message.reply_text("Je gegevens zijn gewist 🕳️")
         except Exception as e:
             print(f"Error wiping database after confirm_wipe: {e}")
             conn.rollback()
-        await update.message.reply_text("Je gegevens zijn gewist 🕳️")
+
         # desired_columns = await desir
         # await add_missing_columns(update, context)
     else:
@@ -1351,8 +1387,7 @@ async def handle_goal_setting(update, user_id, chat_id):
                 'Staat genoteerd! 📋 \n_+1 punt_',
                 'Staat genoteerd! ✒️ \n_+1 punt_',
                 'Staat genoteerd! 🖊️ \n_+1 punt_',
-                'Staat genoteerd! ✏️ \n_+1 punt_',
-                'Staat genoteerd! 🧙‍♂️ \n_+1 punt_'
+                'Staat genoteerd! ✏️ \n_+1 punt_'
             ]
             reply = random.choice(responses)
             await update.message.reply_text(reply, parse_mode="Markdown")
@@ -1417,10 +1452,10 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                         engager_bonus, engaged_bonus, emoji = 0, 1, "😈"
                         print(f"challenge unhandled for now")
                     engaged_id = user_id
-                    await resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus=None)
+                    await resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus)
                     engaged_total_award = 4 + engaged_bonus
                     engaged_name = update.effective_user.first_name
-                    engager_name = await get_first_name_by_id(engager_id)
+                    engager_name = await get_first_name(user_id=engager_id)
                     await update.message.reply_text(
                         f"Lekker bezig! ✅ \n_+{engaged_total_award} (4+{engaged_bonus}) punten voor {engaged_name}\n"
                         f"+{engager_bonus} punten voor {engager_name} {emoji}_",
@@ -1434,7 +1469,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
         return
 
     
-async def get_first_name_by_id(user_id):
+async def get_first_name(user_id=None, username=None):
     try:
         # Fetch the user object from the bot
         user = await global_bot.get_chat(user_id)  # This gets the user object
@@ -1445,22 +1480,27 @@ async def get_first_name_by_id(user_id):
 
     
     
-async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus=None):
-    if not engager_bonus:
-        engager_bonus = 0
+async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus):
+    engager_bonus = engager_bonus or 0
     try:
         # archive engagement status
         cursor.execute('''
         UPDATE engagements 
         SET status = 'archived' 
-        WHERE id = %s
-    ''', (engagement_id,))
+        WHERE id = %s AND chat_id = %s
+    ''', (engagement_id, chat_id))
+        rows_updated = cursor.rowcount
+        if rows_updated == 0:
+            print("No engagements records were updated resolving engagement")
         # award points
         cursor.execute('''
         UPDATE users 
         SET score = score + %s 
         WHERE user_id = %s AND chat_id = %s
     ''', (engager_bonus, engager_id, chat_id))
+        rows_updated = cursor.rowcount
+        if rows_updated == 0:
+            print("No users records were updated resolving engagement")
         conn.commit()
         return
     except Exception as e:
@@ -1562,7 +1602,17 @@ async def roll_dice(update, context):
         )
 
     except Exception as e:
-        print (f"Error: {e}")       
+        print (f"Error: {e}")     
+        
+def update_last_reset_time():
+    try:
+        current_time = datetime.now()
+        cursor.execute("UPDATE bot_status SET last_reset_time = %s", (current_time,))
+        conn.commit()
+        print(f"last_reset_time updated to {current_time}")
+    except Exception as e:
+        print(f"Error updating last reset time: {e}")
+        conn.rollback()
 
 # nightly or catch-up reset        
 async def reset_goal_status(context_or_application):
@@ -1582,9 +1632,15 @@ async def reset_goal_status(context_or_application):
         # Send reset message to all active chats
         bot = context_or_application.bot if hasattr(context_or_application, 'bot') else context_or_application # Because application is passed from catchup, and context from job queue
         for chat_id in chat_ids:
-            await bot.send_message(chat_id=chat_id, text="🌄")
-            await bot.send_message(chat_id=chat_id, text=f"✨{get_random_philosophical_message}✨")
-            await bot.send_message(chat_id=chat_id, text="🌄 _Dagelijkse doelen weggetoverd_ 📢🧙‍♂️", parse_mode="Markdown")
+            morning_emojis = ["🌅", "🌄", "🕓"]
+            random_morning_emoji = random.choice()
+            if random.random() < 0.03:
+                    random_morning_emoji = "🧙‍♂️"
+            if random.random() < 0.03:
+                random_morning_emoji = "🍆" 
+            await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
+            await bot.send_message(chat_id=chat_id, text=f"✨{get_random_philosophical_message()}✨")
+            await bot.send_message(chat_id=chat_id, text="_Dagelijkse doelen weggetoverd_ 📢🧙‍♂️", parse_mode="Markdown")
 
     except Exception as e:
         print(f"Error resetting goal status: {e}")
@@ -1606,26 +1662,15 @@ def get_last_reset_time():
         print(f"Error getting last reset time: {e}")
         return None
 
-def update_last_reset_time():
-    try:
-        current_time = datetime.now()
-        cursor.execute("UPDATE bot_status SET last_reset_time = %s", (current_time,))
-        conn.commit()
-        print(f"last_reset_time updated to {current_time}")
-    except Exception as e:
-        print(f"Error updating last reset time: {e}")
-        conn.rollback()
 
 # Setup function 
 async def setup(application):
-    print("\nSetting up job queue")
     try:
         # Schedule the reset job using job_queue
         job_queue = application.job_queue
         reset_time = time(hour=2, minute=0, second=0)
-        print(f"Scheduling daily reset for {reset_time}")
         job_queue.run_daily(reset_goal_status, time=reset_time)
-        print("Job queue set up successfully")
+        print(f"Job queue set up successfully at {reset_time}")
 
         # Check if reset is needed on startup
         last_reset = get_last_reset_time()
