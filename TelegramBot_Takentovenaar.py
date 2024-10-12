@@ -13,6 +13,13 @@ import psycopg2
 import pytz
 from datetime import datetime, time, timedelta
 
+global_bot = None
+
+def initialize_bot(token):
+    global global_bot
+    global_bot = Bot(token)
+
+local_flag = False
 
 # berlin_tz = pytz.timezone('Europe/Berlin')
 # berlin_time = datetime.now(berlin_tz)
@@ -22,6 +29,7 @@ if not os.getenv('HEROKU_ENV'):  # Check if HEROKU_ENV is not set, meaning it's 
     try:
         from dotenv import load_dotenv
         load_dotenv(override=True)
+        local_flag = True
     except ImportError:
         pass  # In case dotenv isn't installed, ignore this when running locally
    
@@ -34,11 +42,7 @@ if not api_key:
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 # print(f"__________OpenAI API Key_________:'\n{api_key}\n")
 
-# For local development
-LOCAL_DB_URL = "postgresql://postgres:OmtePosten@localhost/mydb"
 
-# Use environment variable for Heroku, fallback to local for development
-DATABASE_URL = os.getenv('DATABASE_URL', LOCAL_DB_URL)
 
 # Use DATABASE_URL if available (Heroku), otherwise fallback to LOCAL_DB_URL
 DATABASE_URL = os.getenv('DATABASE_URL', os.getenv('LOCAL_DB_URL'))
@@ -85,8 +89,7 @@ try:
         'set_time': 'TIMESTAMP',  
         'today_goal_text': "TEXT DEFAULT ''",
         'pending_challenge': "TEXT DEFAULT '{}'",
-        'inventory': "JSONB DEFAULT '{\"boosts\": 2, \"links\": 0, \"challenges\": 0}'",
-        'first_name': 'TEXT'
+        'inventory': "JSONB DEFAULT '{\"boosts\": 2, \"links\": 2, \"challenges\": 2}'",
     }
 
     # Create the tables if they don't exist
@@ -95,7 +98,6 @@ try:
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT,
             chat_id BIGINT,
-            first_name TEXT,
             total_goals INTEGER DEFAULT 0,
             completed_goals INTEGER DEFAULT 0,
             score INTEGER DEFAULT 0,
@@ -103,7 +105,7 @@ try:
             set_time TIMESTAMP,       
             today_goal_text TEXT DEFAULT '',
             pending_challenge TEXT DEFAULT '{}',
-            inventory JSONB DEFAULT '{"boosts": 2, "links": 0, "challenges": 0}',       
+            inventory JSONB DEFAULT '{"boosts": 2, "links": 2, "challenges": 2}',       
             PRIMARY KEY (user_id, chat_id)
         )
     ''')
@@ -126,21 +128,20 @@ try:
     try:
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS engagements (
-        id BIGSERIAL PRIMARY KEY,
-        engager_id BIGINT NOT NULL,
-        engaged_id BIGINT NOT NULL,
-        chat_id BIGINT NOT NULL,
-        special_type TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        status TEXT DEFAULT 'pending', -- either pending or archived for now
-        UNIQUE (engager_id, engaged_id, special_type, chat_id),
-        FOREIGN KEY (engager_id, chat_id) REFERENCES users(user_id, chat_id), -- foreign keys ensure that these are present in users table
-        FOREIGN KEY (engaged_id, chat_id) REFERENCES users(user_id, chat_id)
-    );
+            id BIGSERIAL PRIMARY KEY,
+            engager_id BIGINT NOT NULL,
+            engaged_id BIGINT NOT NULL,
+            chat_id BIGINT NOT NULL,
+            special_type TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'pending', -- either 'pending' or 'archived'
+            UNIQUE (engager_id, engaged_id, special_type, chat_id),
+            FOREIGN KEY (engager_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
+            FOREIGN KEY (engaged_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE
+        );
 
         ''')
         conn.commit()
-        print("Table 'engagements' created or already exists.")  # Success message
     except Exception as e:
         print(f"Error creating engagements table: {e}")
 
@@ -240,37 +241,44 @@ def add_special(user_id, chat_id, special_type, amount=1):
         print(f"Error add_special: {e}")
         return
 
-async def complete_new_engagement(cursor, engager_id, engaged_id, chat_id, special_type):
-    user_id = engager_id
-    cursor.execute('''
-        INSERT INTO engagements 
-        (engager_id, engaged_id, chat_id, special_type, created_at, status)
-        VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, 'pending')
-        ON CONFLICT (engager_id, engaged_id, special_type, chat_id)
-        DO UPDATE SET 
-            created_at = CURRENT_TIMESTAMP,
-            status = 'pending'
-        RETURNING id;
-    ''', (engager_id, engaged_id, chat_id, special_type))
+#10
+async def complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):
+    try:
+        
+        user_id = engager_id
+        cursor.execute('''
+            INSERT INTO engagements 
+            (engager_id, engaged_id, chat_id, special_type, created_at, status)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, 'pending')
+            ON CONFLICT (engager_id, engaged_id, special_type, chat_id)
+            DO UPDATE SET 
+                created_at = CURRENT_TIMESTAMP,
+                status = 'pending'
+            RETURNING id;
+        ''', (engager_id, engaged_id, chat_id, special_type))
         # Update inventory to sutract 1 engagement
-    # Dynamically construct the JSON path string
-    path = '{' + special_type + '}'
+        # Dynamically construct the JSON path string
+        path = '{' + special_type + '}'
     
-    # Build the SQL query, using safe parameterization for user data
-    query = '''
-        UPDATE users
-        SET inventory = jsonb_set(
-            inventory,
-            %s,  -- The path in the JSON structure
-            (COALESCE(inventory->>%s, '0')::int - 1)::text::jsonb  -- Update the special_type count
-        )
-        WHERE user_id = %s AND chat_id = %s AND (inventory->>%s)::int > 0
-        RETURNING inventory
-    '''
-    # Execute the query, passing the dynamic path and safe parameters
-    cursor.execute(query, (path, special_type, user_id, chat_id, special_type))
-    conn.commit()
-    return cursor.fetchone() is not None
+        # Build the SQL query, using safe parameterization for user data
+        query = '''
+            UPDATE users
+            SET inventory = jsonb_set(
+                inventory,
+                %s,  -- The path in the JSON structure
+                (COALESCE(inventory->>%s, '0')::int - 1)::text::jsonb  -- Update the special_type count
+            )
+            WHERE user_id = %s AND chat_id = %s AND (inventory->>%s)::int > 0
+            RETURNING inventory
+        '''
+        # Execute the query, passing the dynamic path and safe parameters
+        cursor.execute(query, (path, special_type, user_id, chat_id, special_type))
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Error completing engagement: {e}")
+        conn.rollback()
+        return False
 
 
 async def show_inventory(update, context):
@@ -501,28 +509,55 @@ def escape_markdown_v2(text):
     return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', str(text))
 
 async def check_use_of_special(update, context, special_type):
-    chat_id = update.effective_chat.id
-    engager = update.effective_user
-    engager_id = engager.id
-    engager_name = engager.first_name
-    
-    # Check if the command is a reply to another message
-    if update.message.reply_to_message is None:
-        await update.message.reply_text(f"🚫 Je moet deze command als reply gebruiken op het bericht van degene die je wilt {special_type_verb}! 🧙‍♂️")
-        print(f"{special_type_singular} couldn't be used by {engager_name}")
-        return False
-    
-    engaged = update.message.reply_to_message.from_user
-    engaged_id = engaged.id
-    engaged_name = engaged.first_name
-
     special_type_singular = special_type.rstrip('s')
     if special_type_singular.endswith('e'):
         special_type_verb = special_type_singular + 'n'
     else:
         special_type_verb = special_type_singular + 'en'
+    chat_id = update.effective_chat.id
+    engager = update.effective_user
+    engager_id = engager.id
+    engager_name = engager.first_name
+    message = update.message
+    entities = message.entities
+
+    engaged = None
+    engaged_id = None
+    engaged_name = None
     
-    if engaged.first_name == "TakenTovenaar_bot":
+    print(f"Messages:\n{message}\nEntities:\n\n{entities}\n\n")
+    
+    # Check if the command is a reply to another message or a mention
+    # Check if there are mentions in the message
+    user_mentioned = False
+    if message.entities:
+        for entity in message.entities:
+            print(f"{entity}\n\n we gaan erin")
+            if entity.type == "text_mention":  # Detect if there's a direct user mention
+                print(f"this is engaged_name in entity type text_mention: {engaged_name}")
+                engaged = entity.user
+                engaged_id = entity.user.id  # Extract the mentioned user's ID
+                engaged_name = get_user_by_id(bot, engaged_id)
+                user_mentioned = True
+                print(f"Mentioned User ID: {engaged_id}\nMentioned User Name: {engaged_name}")  
+            elif entity.type == "mention":  # Detect if there's a mention of a user with a username
+                username = message.text[entity.offset:entity.offset + entity.length]  # Extract the username from the message text
+                user_mentioned = True
+                print(f"Username mentioned: {username}, Cannot handle this yet. Have to build the logic to collect engaged id & name")
+    print(f"\n\n\n\nUser mentioned: {user_mentioned}\n\n\n\n")            
+    # In case of no mentions, replies are checked
+                
+    if user_mentioned == False:
+        if update.message.reply_to_message is None:
+            await update.message.reply_text(f"🚫 Antwoord op iemands berichtje of gebruik een @-mention om ze te {special_type_verb}! 🧙‍♂️")
+            print(f"{special_type_singular} couldn't be used by {engager_name}")
+        else:
+            engaged = update.message.reply_to_message.from_user
+            engaged_id = engaged.id
+            engaged_name = engaged.first_name
+            print(f"Goed opletten nu, engaged is: {engaged}")
+    
+    if engaged_name == "TakenTovenaar_bot":
         await update.message.reply_text(f"🚫 Y O U  S H A L L  N O T  P A S S ! 🚫🧙‍♂️\n_      a {special_type_singular} to me..._", parse_mode = "Markdown")
         print(f"{special_type_singular} couldn't be used by {engager_name}")
         return False
@@ -548,27 +583,59 @@ async def check_use_of_special(update, context, special_type):
         print(f"Error selecting goal: {e}")
 
     # Check if the engager has sufficient inventory to engage
+    if await check_special_balance(engager_id, chat_id, special_type) == "not enough":
+        await update.message.reply_text(f"🚫 {engager_name}, je hebt niet genoeg {special_type}! 🧙‍♂️")
+        return False
+    elif await check_special_balance(engager_id, chat_id, special_type) == "no inventory":
+        await update.message.reply_text(f"🚫 {engager_name}, je hebt geen inventory?! 🧙‍♂️")
+        return False
+    elif await check_identical_engagement(engager_id, engaged_id, special_type, chat_id):
+        await update.message.reply_text(f"🚫 Je hebt al een {special_type_singular} uitstaan op {engaged_name}! 🧙‍♂️")
+        return False
+    else:
+        print(f"check_use_of_special ...\n>>PASSED>>\n...complete_new_engagement\n")
+        if await complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):   # < < < < < 
+                await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
+                print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
+        else:
+            await update.message.reply_text(f"🚫 {engaged_name} staat (nog) niet in de database! 🧙‍♂️ \n(hij/zij moet eerst een doel stellen)")  #77
+            print(f"Engagement Failed op de valreep.")
+
+async def check_special_balance(engager_id, chat_id, special_type):
     try:    
         cursor.execute('SELECT inventory FROM users WHERE user_id = %s AND chat_id = %s', (engager_id, chat_id))
         result = cursor.fetchone()
-
         if result:
             # Since the result is already a dictionary, we don't need json.loads()
             inventory = result[0]
-    
             # Check if the engager has sufficient inventory for the special_type
             if inventory.get(special_type, 0) <= 0:  # Safely get the value, default to 0 if the key doesn't exist
-                await update.message.reply_text(f"🚫 {engager_name}, je hebt niet genoeg {special_type}! 🧙‍♂️")
-                return False
+                return "not enough"
             else:
-                # Proceed with the rest of the logic
-                pass
+                return True
         else:
-            await update.message.reply_text(f"🚫 {engager_name}, je hebt geen inventory?! 🧙‍♂️")
+            return "no inventory"
+            
     except Exception as e:
         print(f'Error checking sufficient inventory: {e}')
         return
 
+# Check if the engager has a pending engage with the same user with the same special type
+async def check_identical_engagement(engager_id, engaged_id, special_type, chat_id): 
+    try:
+        cursor.execute('''
+            SELECT * FROM engagements 
+            WHERE engager_id = %s AND engaged_id = %s AND special_type = %s AND chat_id = %s AND status = 'pending'
+        ''', (engager_id, engaged_id, special_type, chat_id))
+        result = cursor.fetchone()
+        print(f"{result}")
+        if result:
+            return True
+        else:
+            return False  
+    except Exception as e:
+        print(f'Error checking identical engagement: {e}')
+        return     
 
 async def ranking_command(update, context):
     update.message.reply_text("UNDER CONSTRUCTION")
@@ -601,6 +668,7 @@ async def stats_command(update, context):
     chat_id = update.effective_chat.id 
     
     # Fetch user stats from the database
+    result = None
     try:
         cursor.execute('''
             SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text
@@ -700,7 +768,7 @@ async def challenge_command(update, context):
     return
 
 
-async def handle_special_command(update, context, special_type, mention_id=None):
+async def handle_special_command(update, context, special_type, engaged_id=None):
     engager = update.effective_user
     engager_id = engager.id
     engager_name = engager.first_name
@@ -872,10 +940,11 @@ async def wipe_command(update, context):
 async def confirm_wipe(update, context):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    user_response = update.message.text.strip().upper()
+    user_response = update.message.text.strip()
     
     if user_response == 'JA':
         try:
+            cursor.execute('DELETE FROM engagements WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
             cursor.execute('DELETE FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
             conn.commit()
         except Exception as e:
@@ -1174,33 +1243,57 @@ async def handle_regular_message(update, context):
             except Exception as e:
                 conn.rollback()  # Rollback the transaction on error
                 print(f"Error: {e}")
+                
     # Special_type drop 
-    elif user_message == 'givboosts':
-        if await check_chat_owner(update, context):
-            # Reset goal status
-            try:
-                special_type = 'boosts'
-            # Build the SQL query, hardcoding the JSON path for 'boosts'
-                query = '''
-                    UPDATE users
-                    SET inventory = jsonb_set(
-                        inventory,
-                        '{boosts}',  -- The path in the JSON structure (hardcoded as 'boosts')
-                        (COALESCE(inventory->>'boosts', '0')::int + 10)::text::jsonb  -- Update the special_type count
-                    )
-                    WHERE user_id = %s AND chat_id = %s
-                    RETURNING inventory
-                '''
-        
-                # Execute the query, passing the safe parameters
-                cursor.execute(query, (user_id, chat_id))
-                conn.commit()
 
-                print(f"givboosts", datetime.now())
-                await context.bot.send_message(chat_id=update.message.chat_id, text=f"_+ 10 boosts voor {first_name}_ 🧙‍♂️", parse_mode="Markdown")
-            except Exception as e:
-                conn.rollback()  # Rollback the transaction on error
-                print(f"Error givboosts: {e}")
+    elif user_message.lower().startswith('giv') and user_message.endswith('s'):
+        if 'boosts' in user_message:
+            await giv_specials(update, context, 'boosts')
+        if 'links' in user_message:
+            await giv_specials(update, context, 'links')
+        if 'challenges' in user_message:
+            await giv_specials(update, context, 'challenges')            
+            return
+            
+        
+
+
+async def giv_specials(update, context, special_type):
+    try:
+        user_id = update.effective_user.id
+        first_name = update.effective_user.first_name
+        chat_id = update.effective_chat.id
+        
+        # Dynamically construct the JSON path for the special_type
+        path = '{' + special_type + '}'  # JSON path, e.g., '{boosts}'
+        
+        query = '''
+            UPDATE users
+            SET inventory = jsonb_set(
+                inventory,
+                %s,  -- The dynamic path in the JSON structure (passed as a parameter)
+                (COALESCE(inventory->>%s, '0')::int + 10)::text::jsonb  -- Update the special_type count
+            )
+            WHERE user_id = %s AND chat_id = %s
+            RETURNING inventory
+        '''
+        
+        # Execute the query with proper parameterization
+        cursor.execute(query, (path, special_type, user_id, chat_id))
+        
+        # Commit the transaction
+        conn.commit()
+
+        # Fetch the updated inventory result
+        updated_inventory = cursor.fetchone()
+        await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+10 {special_type} voor {first_name}_", parse_mode = "Markdown")
+        return updated_inventory
+
+    except Exception as e:
+        print(f"Error updating specials: {e}")
+        conn.rollback()
+        return None
+
             
 
 # Assistant_response == 'Doelstelling'          
@@ -1293,8 +1386,6 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
             )
             goal_text = response.choices[0].message.content.strip()
             # Save the reworded past tense goal in the database        
-            user_id = update.effective_user.id
-            chat_id = update.effective_chat.id
             update_user_goal(user_id, chat_id, goal_text)
 
             completion_time = datetime.now().strftime("%H:%M")
@@ -1313,46 +1404,45 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                         , parse_mode="Markdown")
                 return
             else:
-                engagement_id, engager_id, special_type = result
-                print(f"Pending engagement found, ID: {engagement_id}, Engager ID: {engager_id}, Special Type: {special_type}")
-                    # Define bonus points based on special_type
-                if special_type == 'boost':
-                    engager_bonus, engaged_bonus, emoji = 1, 1, "⚡"
-                elif special_type == 'link':
-                    engager_bonus, engaged_bonus, emoji = 1, 1, "🔗"
-                    print(f"link unhandled for now")
-                elif special_type == 'challenge':
-                    engager_bonus, engaged_bonus, emoji = 0, 1, "😈"
-                    print(f"challenge unhandled for now")
-                engaged_id = user_id
-                await resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus=None)
-                engaged_total_award = 4 + engaged_bonus
-                engaged_name = update.effective_user.first_name
-                engager_name = await get_user_name(engager_id, chat_id)
-                await update.message.reply_text(
-                    f"Lekker bezig! ✅ \n_+{engaged_total_award} (4+{engaged_bonus}) punten voor {engaged_name}\n"
-                    f"+{engager_bonus} punten voor {engager_name} {emoji}_",
-                    parse_mode="Markdown"
-                )
+                try:
+                    engagement_id, engager_id, special_type = result
+                    print(f"Pending engagement found, ID: {engagement_id}, Engager ID: {engager_id}, Special Type: {special_type}")
+                        # Define bonus points based on special_type
+                    if special_type == 'boosts':
+                        engager_bonus, engaged_bonus, emoji = 1, 1, "⚡"
+                    elif special_type == 'links':
+                        engager_bonus, engaged_bonus, emoji = 1, 1, "🔗"
+                        print(f"link unhandled for now")
+                    elif special_type == 'challenges':
+                        engager_bonus, engaged_bonus, emoji = 0, 1, "😈"
+                        print(f"challenge unhandled for now")
+                    engaged_id = user_id
+                    await resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus=None)
+                    engaged_total_award = 4 + engaged_bonus
+                    engaged_name = update.effective_user.first_name
+                    engager_name = await get_first_name_by_id(engager_id)
+                    await update.message.reply_text(
+                        f"Lekker bezig! ✅ \n_+{engaged_total_award} (4+{engaged_bonus}) punten voor {engaged_name}\n"
+                        f"+{engager_bonus} punten voor {engager_name} {emoji}_",
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    print(f"Error hier in de engagement completion: {e}")
     except Exception as e:
         print(f"Error in goal_completion: {e}")
         conn.rollback()
         return
+
     
-async def get_user_name(user_id, chat_id):
+async def get_first_name_by_id(user_id):
     try:
-        cursor.execute('''
-            SELECT first_name FROM users
-            WHERE user_id = %s AND chat_id = %s
-        ''', (user_id, chat_id))
-        result = cursor.fetchone()
-        if result:
-            return result[0]
-        else:
-            return "Unknown User"
+        # Fetch the user object from the bot
+        user = await global_bot.get_chat(user_id)  # This gets the user object
+        return user.first_name  # Return the first name of the user
     except Exception as e:
-        print(f"Error in get_user_name: {e}")
-        return "Unknown User"
+        print(f"Error fetching user details for user_id {user_id}: {e}")
+        return None
+
     
     
 async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus=None):
@@ -1377,11 +1467,6 @@ async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, e
         print(f"Error in archiving/awarding (resolve_engagement): {e}")
         conn.rollback()
         raise
-
-
-
-
-            
 
                 
             
@@ -1576,7 +1661,7 @@ def main():
     print("\nEntering main function\n")
     try:
         # Check if running locally or on Heroku
-        if DATABASE_URL == LOCAL_DB_URL:
+        if local_flag == True:
             print("Using local Database")
             # Running locally, use local bot token
             token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN')
@@ -1590,6 +1675,9 @@ def main():
 
         if token is None:
             raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables")
+        
+        token = token.strip()
+        initialize_bot(token)
         
         # Create the bot application with ApplicationBuilder
         application = ApplicationBuilder().token(token).build()
@@ -1605,9 +1693,9 @@ def main():
         application.add_handler(CommandHandler(["boost", 'boosten', "boosting"], boost_command))
         application.add_handler(CommandHandler(["link", "links", "linken"], link_command))
         application.add_handler(CommandHandler(["inventaris", "inventory"], inventory_command))
-        application.add_handler(CommandHandler(["gift", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd"], gift_command))
+        application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd"], gift_command))
         application.add_handler(CommandHandler(["steal", "steel", "sorry", "oeps"], steal_command))
-        application.add_handler(CommandHandler(["revert", "bijna"], revert_goal_completion_command))
+        application.add_handler(CommandHandler(["revert", "neee"], revert_goal_completion_command))
         application.add_handler(CommandHandler(["ranking", "tussenstand"], ranking_command))
         
         wipe_conv_handler = ConversationHandler(
@@ -1624,7 +1712,7 @@ def main():
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
         # Handler for edited messages
         application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
-        
+
         # Start the bot
         application.run_polling()
         print("********************* END OF MAIN *********************")

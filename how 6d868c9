@@ -1,0 +1,348 @@
+[33mcommit 1dea6c36f0b60d8fb01d8f5595408df918266f45[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m)[m
+Author: Ben ten Berge <tenbergeben@gmail.com>
+Date:   Sat Oct 12 11:47:13 2024 +0200
+
+    Update .gitignore to exclude virtual environment
+
+[1mdiff --git a/.gitignore b/.gitignore[m
+[1mindex a0f4938..6c0e34a 100644[m
+[1m--- a/.gitignore[m
+[1m+++ b/.gitignore[m
+[36m@@ -3,3 +3,4 @@[m [m__pycache__/[m
+ *.pyc[m
+ *.log[m
+ .env[m
+[32m+[m[32menv/[m
+[1mdiff --git a/env/Lib/site-packages/pip-24.0.dist-info/AUTHORS.txt b/env/Lib/site-packages/pip-24.0.dist-info/AUTHORS.txt[m
+[1mdeleted file mode 100644[m
+[1mindex 0e63548..0000000[m
+[1m--- a/env/Lib/site-packages/pip-24.0.dist-info/AUTHORS.txt[m
+[1m+++ /dev/null[m
+[36m@@ -1,760 +0,0 @@[m
+[31m-@Switch01[m
+[31m-A_Rog[m
+[31m-Aakanksha Agrawal[m
+[31m-Abhinav Sagar[m
+[31m-ABHYUDAY PRATAP SINGH[m
+[31m-abs51295[m
+[31m-AceGentile[m
+[31m-Adam Chainz[m
+[31m-Adam Tse[m
+[31m-Adam Wentz[m
+[31m-admin[m
+[31m-Adrien Morison[m
+[31m-ahayrapetyan[m
+[31m-Ahilya[m
+[31m-AinsworthK[m
+[31m-Akash Srivastava[m
+[31m-Alan Yee[m
+[31m-Albert Tugushev[m
+[31m-Albert-Guan[m
+[31m-albertg[m
+[31m-Alberto Sottile[m
+[31m-Aleks Bunin[m
+[31m-Ales Erjavec[m
+[31m-Alethea Flowers[m
+[31m-Alex Gaynor[m
+[31m-Alex Grönholm[m
+[31m-Alex Hedges[m
+[31m-Alex Loosley[m
+[31m-Alex Morega[m
+[31m-Alex Stachowiak[m
+[31m-Alexander Shtyrov[m
+[31m-Alexandre Conrad[m
+[31m-Alexey Popravka[m
+[31m-Aleš Erjavec[m
+[31m-Alli[m
+[31m-Ami Fischman[m
+[31m-Ananya Maiti[m
+[31m-Anatoly Techtonik[m
+[31m-Anders Kaseorg[m
+[31m-Andre Aguiar[m
+[31m-Andreas Lutro[m
+[31m-Andrei Geacar[m
+[31m-Andrew Gaul[m
+[31m-Andrew Shymanel[m
+[31m-Andrey Bienkowski[m
+[31m-Andrey Bulgakov[m
+[31m-Andrés Delfino[m
+[31m-Andy Freeland[m
+[31m-Andy Kluger[m
+[31m-Ani Hayrapetyan[m
+[31m-Aniruddha Basak[m
+[31m-Anish Tambe[m
+[31m-Anrs Hu[m
+[31m-Anthony Sottile[m
+[31m-Antoine Musso[m
+[31m-Anton Ovchinnikov[m
+[31m-Anton Patrushev[m
+[31m-Antonio Alvarado Hernandez[m
+[31m-Antony Lee[m
+[31m-Antti Kaihola[m
+[31m-Anubhav Patel[m
+[31m-Anudit Nagar[m
+[31m-Anuj Godase[m
+[31m-AQNOUCH Mohammed[m
+[31m-AraHaan[m
+[31m-Arindam Choudhury[m
+[31m-Armin Ronacher[m
+[31m-Artem[m
+[31m-Arun Babu Neelicattu[m
+[31m-Ashley Manton[m
+[31m-Ashwin Ramaswami[m
+[31m-atse[m
+[31m-Atsushi Odagiri[m
+[31m-Avinash Karhana[m
+[31m-Avner Cohen[m
+[31m-Awit (Ah-Wit) Ghirmai[m
+[31m-Baptiste Mispelon[m
+[31m-Barney Gale[m
+[31m-barneygale[m
+[31m-Bartek Ogryczak[m
+[31m-Bastian Venthur[m
+[31m-Ben Bodenmiller[m
+[31m-Ben Darnell[m
+[31m-Ben Hoyt[m
+[31m-Ben Mares[m
+[31m-Ben Rosser[m
+[31m-Bence Nagy[m
+[31m-Benjamin Peterson[m
+[31m-Benjamin VanEvery[m
+[31m-Benoit Pierre[m
+[31m-Berker Peksag[m
+[31m-Bernard[m
+[31m-Bernard Tyers[m
+[31m-Bernardo B. Marques[m
+[31m-Bernhard M. Wiedemann[m
+[31m-Bertil Hatt[m
+[31m-Bhavam Vidyarthi[m
+[31m-Blazej Michalik[m
+[31m-Bogdan Opanchuk[m
+[31m-BorisZZZ[m
+[31m-Brad Erickson[m
+[31m-Bradley Ayers[m
+[31m-Brandon L. Reiss[m
+[31m-Brandt Bucher[m
+[31m-Brett Randall[m
+[31m-Brett Rosen[m
+[31m-Brian Cristante[m
+[31m-Brian Rosner[m
+[31m-briantracy[m
+[31m-BrownTruck[m
+[31m-Bruno Oliveira[m
+[31m-Bruno Renié[m
+[31m-Bruno S[m
+[31m-Bstrdsmkr[m
+[31m-Buck Golemon[m
+[31m-burrows[m
+[31m-Bussonnier Matthias[m
+[31m-bwoodsend[m
+[31m-c22[m
+[31m-Caleb Martinez[m
+[31m-Calvin Smith[m
+[31m-Carl Meyer[m
+[31m-Carlos Liam[m
+[31m-Carol Willing[m
+[31m-Carter Thayer[m
+[31m-Cass[m
+[31m-Chandrasekhar Atina[m
+[31m-Chih-Hsuan Yen[m
+[31m-Chris Brinker[m
+[31m-Chris Hunt[m
+[31m-Chris Jerdonek[m
+[31m-Chris Kuehl[m
+[31m-Chris McDonough[m
+[31m-Chris Pawley[m
+[31m-Chris Pryer[m
+[31m-Chris Wolfe[m
+[31m-Christian Clauss[m
+[31m-Christian Heimes[m
+[31m-Christian Oudard[m
+[31m-Christoph Reiter[m
+[31m-Christopher Hunt[m
+[31m-Christopher Snyder[m
+[31m-cjc7373[m
+[31m-Clark Boylan[m
+[31m-Claudio Jolowicz[m
+[31m-Clay McClure[m
+[31m-Cody[m
+[31m-Cody Soyland[m
+[31m-Colin Watson[m
+[31m-Collin Anderson[m
+[31m-Connor Osborn[m
+[31m-Cooper Lees[m
+[31m-Cooper Ry Lees[m
+[31m-Cory Benfield[m
+[31m-Cory Wright[m
+[31m-Craig Kerstiens[m
+[31m-Cristian Sorinel[m
+[31m-Cristina[m
+[31m-Cristina Muñoz[m
+[31m-Curtis Doty[m
+[31m-cytolentino[m
+[31m-Daan De Meyer[m
+[31m-Dale[m
+[31m-Damian[m
+[31m-Damian Quiroga[m
+[31m-Damian Shaw[m
+[31m-Dan Black[m
+[31m-Dan Savilonis[m
+[31m-Dan Sully[m
+[31m-Dane Hillard[m
+[31m-daniel[m
+[31m-Daniel Collins[m
+[31m-Daniel Hahler[m
+[31m-Daniel Holth[m
+[31m-Daniel Jost[m
+[31m-Daniel Katz[m
+[31m-Daniel Shaulov[m
+[31m-Daniele Esposti[m
+[31m-Daniele Nicolodi[m
+[31m-Daniele Procida[m
+[31m-Daniil Konovalenko[m
+[31m-Danny Hermes[m
+[31m-Danny McClanahan[m
+[31m-Darren Kavanagh[m
+[31m-Dav Clark[m
+[31m-Dave Abrahams[m
+[31m-Dave Jones[m
+[31m-David Aguilar[m
+[31m-David Black[m
+[31m-David Bordeynik[m
+[31m-David Caro[m
+[31m-David D Lowe[m
+[31m-David Evans[m
+[31m-David Hewitt[m
+[31m-David Linke[m
+[31m-David Poggi[m
+[31m-David Pursehouse[m
+[31m-David Runge[m
+[31m-David Tucker[m
+[31m-David Wales[m
+[31m-Davidovich[m
+[31m-ddelange[m
+[31m-Deepak Sharma[m
+[31m-Deepyaman Datta[m
+[31m-Denise Yu[m
+[31m-dependabot[bot][m
+[31m-derwolfe[m
+[31m-Desetude[m
+[31m-Devesh Kumar Singh[m
+[31m-Diego Caraballo[m
+[31m-Diego Ramirez[m
+[31m-DiegoCaraballo[m
+[31m-Dimitri Merejkowsky[m
+[31m-Dimitri Papadopoulos[m
+[31m-Dirk Stolle[m
+[31m-Dmitry Gladkov[m
+[31m-Dmitry Volodin[m
+[31m-Domen Kožar[m
+[31m-Dominic Davis-Foster[m
+[31m-Donald Stufft[m
+[31m-Dongweiming[m
+[31m-doron zarhi[m
+[31m-Dos Moonen[m
+[31m-Douglas Thor[m
+[31m-DrFeathers[m
+[31m-Dustin Ingram[m
+[31m-Dwayne Bailey[m
+[31m-Ed Morley[m
+[31m-Edgar Ramírez[m
+[31m-Edgar Ramírez Mondragón[m
+[31m-Ee Durbin[m
+[31m-Efflam Lemaillet[m
+[31m-efflamlemaillet[m
+[31m-Eitan Adler[m
+[31m-ekristina[m
+[31m-elainechan[m
+[31m-Eli Schwartz[m
+[31m-Elisha Hollander[m
+[31m-Ellen Marie Dash[m
+[31m-Emil Burzo[m
+[31m-Emil Styrke[m
+[31m-Emmanuel Arias[m
+[31m-Endoh Takanao[m
+[31m-enoch[m
+[31m-Erdinc Mutlu[m
+[31m-Eric Cousineau[m
+[31m-Eric Gillingham[m
+[31m-Eric Hanchrow[m
+[31m-Eric Hopper[m
+[31m-Erik M. Bray[m
+[31m-Erik Rose[m
+[31m-Erwin Janssen[m
+[31m-Eugene Vereshchagin[m
+[31m-everdimension[m
+[31m-Federico[m
+[31m-Felipe Peter[m
+[31m-Felix Yan[m
+[31m-fiber-space[m
+[31m-Filip Kokosiński[m
+[31m-Filipe Laíns[m
+[31m-Finn Womack[m
+[31m-finnagin[m
+[31m-Flavio Amurrio[m
+[31m-Florian Briand[m
+[31m-Florian Rathgeber[m
+[31m-Francesco[m
+[31m-Francesco Montesano[m
+[31m-Frost Ming[m
+[31m-Gabriel Curio[m
+[31m-Gabriel de Perthuis[m
+[31m-Garry Polley[m
+[31m-gavin[m
+[31m-gdanielson[m
+[31m-Geoffrey Sneddon[m
+[31m-George Song[m
+[31m-Georgi Valkov[m
+[31m-Georgy Pchelkin[m
+[31m-ghost[m
+[31m-Giftlin Rajaiah[m
+[31m-gizmoguy1[m
+[31m-gkdoc[m
+[31m-Godefroid Chapelle[m
+[31m-Gopinath M[m
+[31m-GOTO Hayato[m
+[31m-gousaiyang[m
+[31m-gpiks[m
+[31m-Greg Roodt[m
+[31m-Greg Ward[m
+[31m-Guilherme Espada[m
+[31m-Guillaume Seguin[m
+[31m-gutsytechster[m
+[31m-Guy Rozendorn[m
+[31m-Guy Tuval[m
+[31m-gzpan123[m
+[31m-Hanjun Kim[m
+[31m-Hari Charan[m
+[31m-Harsh Vardhan[m
+[31m-harupy[m
+[31m-Harutaka Kawamura[m
+[31m-hauntsaninja[m
+[31m-Henrich Hartzer[m
+[31m-Henry Schreiner[m
+[31m-Herbert Pfennig[m
+[31m-Holly Stotelmyer[m
+[31m-Honnix[m
+[31m-Hsiaoming Yang[m
+[31m-Hugo Lopes Tavares[m
+[31m-Hugo van Kemenade[m
+[31m-Hugues Bruant[m
+[31m-Hynek Schlawack[m
+[31m-Ian Bicking[m
+[31m-Ian Cordasco[m
+[31m-Ian Lee[m
+[31m-Ian Stapleton Cordasco[m
+[31m-Ian Wienand[m
+[31m-Igor Kuzmitshov[m
+[31m-Igor Sobreira[m
+[31m-Ilan Schnell[m
+[31m-Illia Volochii[m
+[31m-Ilya Baryshev[m
+[31m-Inada Naoki[m
+[31m-Ionel Cristian Mărieș[m
+[31m-Ionel Maries Cristian[m
+[31m-Itamar Turner-Trauring[m
+[31m-Ivan Pozdeev[m
+[31m-J. Nick Koston[m
+[31m-Ja
