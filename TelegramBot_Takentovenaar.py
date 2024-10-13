@@ -64,6 +64,7 @@ try:
             FROM information_schema.columns 
             WHERE table_name = %s AND table_schema = 'public';
         """, (table_name,))
+        conn.commit()
         return [info[0] for info in cursor.fetchall()]
 
     # Function to add missing columns
@@ -187,7 +188,10 @@ def get_inventory(user_id, chat_id):
     try:
         cursor.execute("SELECT inventory FROM users WHERE user_id = %s AND chat_id = %s", (user_id, chat_id))
         result = cursor.fetchone()
-        return result[0]
+        if result is None:
+            return None
+        else:
+            return result[0]
     except Exception as e:
         print(f"Error getting inventory: {e}")
         
@@ -217,7 +221,7 @@ async def check_special_inventory(update, context, engager_id, chat_id, special_
     return True  # The engager has sufficient inventory
 
 
-def add_special(user_id, chat_id, special_type, amount=1):
+async def add_special(user_id, chat_id, special_type, amount=1):
     try:
         # Dynamically construct the JSON path string
         path = '{' + special_type + '}'
@@ -287,17 +291,20 @@ async def show_inventory(update, context):
         chat_id = update.effective_chat.id
         first_name = update.effective_user.first_name
         inventory = get_inventory(user_id, chat_id)
-        # Define a dictionary to map items to their corresponding emojis
-        emoji_mapping = {
-            "boosts": "⚡",
-            "links": "🔗",
-            "challenges": "🏆"
-        }
-        inventory_text = "\n".join(
-            f"{emoji_mapping.get(item, '')} {item}: {count}"
-            for item, count in inventory.items()
-        )
-        await update.message.reply_text(f"*Inventaris van {first_name}*\n{inventory_text}", parse_mode="Markdown")
+        if not inventory:
+            await update.message.reply_text(f"Je hebt nog geen inventory. Begin met het instellen van een doel (/start) 🧙‍♂️", parse_mode="Markdown")
+        else:
+            # Define a dictionary to map items to their corresponding emojis
+            emoji_mapping = {
+                "boosts": "⚡",
+                "links": "🔗",
+                "challenges": "🏆"
+            }
+            inventory_text = "\n".join(
+                f"{emoji_mapping.get(item, '')} {item}: {count}"
+                for item, count in inventory.items()
+            )
+            await update.message.reply_text(f"*Inventaris van {first_name}*\n{inventory_text}", parse_mode="Markdown")
     except Exception as e:
         print(f"Error showing inventory: {e}")
 
@@ -323,8 +330,9 @@ def fetch_goal_text(update):
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
     
-def fetch_goal_status(update):
-    user_id = update.effective_user.id
+async def fetch_goal_status(update, user_id = None):
+    if user_id is None:
+        user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
         cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
@@ -340,7 +348,7 @@ def fetch_goal_status(update):
                 return ''
             else:
                 print(f"goal_status zoals in DB: {goal_status}")
-                simplified_goal_status == 'Done'
+                simplified_goal_status = 'Done'
                 return simplified_goal_status
         else:
             print("Goal text not found.")
@@ -573,7 +581,7 @@ async def check_use_of_special(update, context, special_type):
             print(f"Goed opletten nu, engaged is: {engaged}")
     
     if engaged_name == "TakenTovenaar_bot" or engaged_name == "TestTovenaar_bot":
-        await update.message.reply_text(f"🚫 Y O U  S H A L L  N O T  P A S S ! 🚫🧙‍♂️\n_      a {special_type_singular} to me..._", parse_mode = "Markdown")
+        await update.message.reply_text(f"🚫 Y O U  SHALL  NOT  P A S S ! 🚫 🧙‍♂️\n_      a {special_type_singular} to me..._", parse_mode = "Markdown")
         print(f"{special_type_singular} couldn't be used by {engager_name}")
         return False
     elif engager_id == engaged_id:
@@ -603,15 +611,29 @@ async def check_use_of_special(update, context, special_type):
         await update.message.reply_text(f"🚫 {engager_name}, je hebt niet genoeg {special_type}! 🧙‍♂️")
         return False
     elif await check_special_balance(engager_id, chat_id, special_type) == "no inventory":
-        await update.message.reply_text(f"🚫 {engager_name}, je hebt geen inventory?! 🧙‍♂️")
+        await update.message.reply_text(f"🚫 {engager_name}, je hebt je zaakjes nog niet voor elkaar. Stel anders eerst eventjes een doel in (/start) 🧙‍♂️")
         return False
     elif await check_identical_engagement(engager_id, engaged_id, special_type, chat_id):
         await update.message.reply_text(f"🚫 Je hebt al een {special_type_singular} uitstaan op {engaged_name}! 🧙‍♂️")
         return False
     else:
         print(f"check_use_of_special ...\n>>PASSED>>\n...complete_new_engagement\n")
-        if await complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):   # < < < < < 
-                await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
+        if await complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):   # < < < < <
+                
+                emoji_mapping = {
+                    'boosts': '⚡',
+                    'links': '🔗',
+                    'challenges': '😈'
+                }
+
+                # Get the emoji for the given special_type
+                special_type_emoji = emoji_mapping.get(special_type, '')
+                await update.message.reply_text(f"{special_type_emoji}")
+                escaped_engager_name = escape_markdown_v2(engager_name)
+                escaped_engaged_name = escape_markdown_v2(engaged_name)
+                await context.bot.send_message(chat_id=update.effective_chat.id, text =f"{escaped_engager_name} {special_type} [{escaped_engaged_name}](tg://user?id={engaged_id}) 🧙‍♂️"
+                                               , parse_mode="MarkdownV2")
+                # await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
                 print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
         else:
             await update.message.reply_text(f"🚫 Deze persoon staat (nog) niet in de database! 🧙‍♂️ \n(hij/zij moet eerst een doel stellen)")  #77
@@ -714,11 +736,11 @@ async def stats_command(update, context):
             if set_time:
                 set_time = set_time[0]
                 formatted_set_time = set_time.strftime("%H:%M")
-            if await fetch_engagements(user_id):
-                escaped_emoji_string = await fetch_engagements(user_id)
+            if await fetch_pending_engagements(engaged_id = user_id):
+                print(f"user_id: {user_id}")
+                escaped_emoji_string = await fetch_pending_engagements(engaged_id = user_id)
                 stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}"
-                
-                
+    
             else:
                 stats_message += f"📅 Dagdoel: ingesteld om {escape_markdown_v2(formatted_set_time)}\n📝 {escape_markdown_v2(today_goal_text)}"
         elif today_goal_status.startswith('Done'):
@@ -731,23 +753,40 @@ async def stats_command(update, context):
         except AttributeError as e:
             print("die gekke error weer (jaaa)")
     else:
-        await update.message.reply_text(
-        escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me een berichtje met je dagdoel om te beginnen (gebruik '@') 🧙‍♂️"),
-        parse_mode="MarkdownV2"
-    )
-        
-async def fetch_engagements(user_id):
-    try:
-        # Query to get pending engagements for the user, grouped by special_type
-        cursor.execute('''
-            SELECT special_type, COUNT(*)
-            FROM engagements
-            WHERE engager_id = %s AND status = 'pending'
-            GROUP BY special_type;
-        ''', (user_id,))
+        if user_id == update.effective_user.id:
+            await update.message.reply_text(
+            escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me een berichtje met je dagdoel om te beginnen (gebruik '@') 🧙‍♂️"),
+            parse_mode="MarkdownV2")
+        else:
+            await update.message.reply_text(escape_markdown_v2(f"{first_name} heeft nog geen statistieken. \nBegin met het instellen van een doel (/start) 🧙‍♂️"),
+            parse_mode="MarkdownV2")
 
-        # Fetch all results
-        results = cursor.fetchall()
+# Currently handles EITHER engager OR engaged        
+async def fetch_pending_engagements(engager_id = None, engaged_id = None):
+    try:
+        results = []
+        if engager_id:
+            # Query to get pending engagements for the user, grouped by special_type
+            cursor.execute('''
+                SELECT special_type, COUNT(*)
+                FROM engagements
+                WHERE engager_id = %s AND status = 'pending'
+                GROUP BY special_type;
+            ''', (engager_id,))
+
+            # Fetch all results
+            results.extend(cursor.fetchall())
+        if engaged_id:
+            # Query to get pending engagements for the user, grouped by special_type
+            cursor.execute('''
+                SELECT special_type, COUNT(*)
+                FROM engagements
+                WHERE engaged_id = %s AND status = 'pending'
+                GROUP BY special_type;
+            ''', (engaged_id,))
+
+            # Fetch all results
+            results.extend(cursor.fetchall())
         
         # Initialize counts for each type
         boost_count = 0
@@ -773,7 +812,6 @@ async def fetch_engagements(user_id):
         else:
             return False
 
-        # Call the escape_markdown_v2() function
         escaped_string = escape_markdown_v2(engagement_string)
 
         # Return the escaped engagement string
@@ -781,14 +819,19 @@ async def fetch_engagements(user_id):
 
     except Exception as e:
         print(f"Error fetching engagements: {e}")
-        return "Error fetching engagements."
+        return False
 
 
 async def reset_command(update, context):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    
     if has_goal_today(user_id, chat_id):
+        # don't allow resets if challenged
+        if await fetch_pending_engagements(engaged_id = user_id):
+            if "😈" in await fetch_pending_engagements(engaged_id = user_id):
+                goal_text = fetch_goal_text(update, context)   
+                await update.message.reply_text(f"Challenge reeds accepted. 😈 Er is geen weg meer terug 👻🧙‍♂️\n_{goal_text}_", parse_mode = "Markdown")        
+                return False
         try:
             #Reset the user's goal status, subtract 1 point, and clear today's goal text
             cursor.execute('''
@@ -878,19 +921,30 @@ async def steal_command(update, context):
         
 async def revert_goal_completion_command(update, context):
     if await check_chat_owner(update, context):
-        if await fetch_goal_status == 'Done':    
+        user_id = None
+        # Check the target's goal in case of reply
+        if update.message.reply_to_message:
+            user_id = update.message.reply_to_message.from_user.id
+            if await fetch_goal_status(update, user_id) == 'Done':    
+                await handle_admin(update, context, 'revert')
+                return False
+        if await fetch_goal_status(update) == 'Done':    
             await handle_admin(update, context, 'revert')
-            return
+            return False
     else:
         message = get_random_philosophical_message()
         await update.message.reply_text(message)
 
 async def handle_admin(update, context, type, amount=None):
     print(f"entering handle_admin_command")
-    user_id = update.message.reply_to_message.from_user.id
+    try:
+        user_id = update.message.reply_to_message.from_user.id
+    except Exception as e:
+        print(f"Error. Uitdelen kan alleen als reply: {e}")
+        return False
     first_name = update.message.reply_to_message.from_user.first_name
     chat_id = update.effective_chat.id
-    valid_special_types = ['boost', 'link', 'challenge']
+    valid_special_types = ['boosts', 'links', 'challenges']
     if type == 'gift':
         try:
             cursor.execute('''
@@ -899,7 +953,7 @@ async def handle_admin(update, context, type, amount=None):
                             WHERE user_id = %s AND chat_id = %s
                             ''', (amount, user_id, chat_id))
             conn.commit()
-            await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+{amount} punt(en) voor {first_name}_", parse_mode = "Markdown")
+            await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🎁🧙‍♂️\n_+{amount} punt(en) voor {first_name}_", parse_mode = "Markdown")
             return
         except Exception as e:
             print(f"Error updating user score handling admin: {e}")
@@ -912,7 +966,7 @@ async def handle_admin(update, context, type, amount=None):
                             WHERE user_id = %s AND chat_id = %s
                             ''', (amount, user_id, chat_id))
             conn.commit()
-            await update.message.reply_text(f"Taeke Takentovenaar grist weg 🧙‍♂️\n_-{amount} punt(en) van {first_name}_", parse_mode = "Markdown")
+            await update.message.reply_text(f"Taeke Takentovenaar grist weg 🥷\n_-{amount} punt(en) van {first_name}_", parse_mode = "Markdown")
             return
         except Exception as e:
             print(f"Error updating user score handling admin: {e}")
@@ -927,7 +981,7 @@ async def handle_admin(update, context, type, amount=None):
                 WHERE user_id = %s AND chat_id = %s
             ''', (user_id, chat_id))
             conn.commit()
-            await update.message.reply_text(f"Whoops ❌ \nTaeke Takentovenaar grist weer 4 punten weg van {first_name} 🧙‍♂️\n_-4 punten, doel teruggezet naar 'ingesteld'_"
+            await update.message.reply_text(f"Whoops ❌ \nTaeke Takentovenaar draait voltooiing van {first_name} terug 🧙‍♂️\n_-4 punten, doelstatus weer: 'ingesteld'_"
                                     , parse_mode="Markdown")
         except Exception as e:
             print(f"Error updating user score handling admin: {e}")    
@@ -938,7 +992,7 @@ async def handle_admin(update, context, type, amount=None):
            print(f"Invalid special_type gift: {special_type}")
            return
        else:
-           try:
+            try:
                 path = '{' + special_type + '}'
                 cursor.execute('''
                     UPDATE users 
@@ -950,10 +1004,23 @@ async def handle_admin(update, context, type, amount=None):
                     WHERE user_id = %s AND chat_id = %s
                 ''', (path, special_type, user_id, chat_id))
                 conn.commit()
-                await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+1 {special_type} voor {first_name}_", parse_mode = "Markdown")
-           except Exception as e:
+                emoji_mapping = {
+                    'boosts': '⚡',
+                    'links': '🔗',
+                    'challenges': '😈'
+                }
+
+                # Get the emoji for the given special_type
+                special_type_emoji = emoji_mapping.get(special_type, '')
+                await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+1 {special_type}{special_type_emoji} voor {first_name}_", parse_mode="Markdown")
+            except Exception as e:
                 await update.message.reply_text(f"Error: {e}")
+                conn.rollback()
                 return
+
+                
+                
+            
 
            
 
@@ -986,13 +1053,14 @@ async def confirm_wipe(update, context):
         except Exception as e:
             print(f"Error wiping database after confirm_wipe: {e}")
             conn.rollback()
+        return ConversationHandler.END
 
         # desired_columns = await desir
         # await add_missing_columns(update, context)
     else:
         await update.message.reply_text("Wipe geannuleerd 🚷")
-    
-    return ConversationHandler.END
+        return ConversationHandler.END
+        
         
 async def inventory_command(update, context):
     await show_inventory(update, context)
@@ -1244,7 +1312,7 @@ async def handle_regular_message(update, context):
     #    await update.message.reply_text("@Anne-Cathrine, ben je al aan het lezen? 🧙‍♂️😘")
     # Send into the void
     elif user_message == 'oké en we zijn weer live':
-        await context.bot.send_message(chat_id=update.message.chat_id, text="Database gereset hihi, allemaal ONvoLDoEnDe! 🧙‍♂️\n\nMaar nu werk ik weer 🧙‍♂️", parse_mode="Markdown")
+        await context.bot.send_message(chat_id=update.message.chat_id, text="Database gereset hihi, allemaal ONvoLDoEnDe!\n\nMaar nu werk ik weer 🧙‍♂️", parse_mode="Markdown")
     elif user_message == "Guess who's back...":
             await context.bot.send_message(chat_id=update.message.chat_id, text="Tovenaartje terug ✨🧙‍♂️", parse_mode="Markdown")        
     elif user_message == 'whoops..!':
@@ -1396,7 +1464,7 @@ async def handle_goal_setting(update, user_id, chat_id):
 async def check_goal_compatibility(update, goal_text, user_message):
     messages = [
                 {"role": "system", "content": "Controleer of een bericht zou kunnen rapporteren over het succesvol uitvoeren van een gesteld doel. Antwoord alleen met 'Ja' of 'Nee'."},
-                {"role": "user", "content": f"Het gestelde doel is: {goal_text} en het bericht is: {user_message}"}
+                {"role": "user", "content": f"Het gestelde doel is: {goal_text} En het bericht is: {user_message}"}
             ]
     assistant_response = await send_openai_request(messages, temperature=0.1)
     print(f"check_goal_compatibility: {messages}\n\n\nUitkomst check: {assistant_response}")
@@ -1478,8 +1546,7 @@ async def get_first_name(user_id=None, username=None):
         print(f"Error fetching user details for user_id {user_id}: {e}")
         return None
 
-    
-    
+# resolve engagement aka archive and award engager_bonus (upon goal completion and potentially nightly reset)     
 async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus):
     engager_bonus = engager_bonus or 0
     try:
@@ -1616,6 +1683,8 @@ def update_last_reset_time():
 
 # nightly or catch-up reset        
 async def reset_goal_status(context_or_application):
+    # for the bot being able to send messages
+    bot = context_or_application.bot if hasattr(context_or_application, 'bot') else context_or_application # Because application is passed from catchup, and context from job queue
     try:
         # Fetch all unique chat IDs from the users table
         cursor.execute("SELECT DISTINCT chat_id FROM users")
@@ -1626,25 +1695,77 @@ async def reset_goal_status(context_or_application):
         conn.commit()
         print("Goal status reset at", datetime.now())
 
-        # Update the last reset time
-        update_last_reset_time()
+        
+        # Fetch all engager_ids for pending boost engagements (⚡)
+        cursor.execute('''
+            SELECT DISTINCT engager_id, chat_id
+            FROM engagements
+            WHERE status = 'pending'
+        ''')
+        pending_engagers = cursor.fetchall()
 
-        # Send reset message to all active chats
-        bot = context_or_application.bot if hasattr(context_or_application, 'bot') else context_or_application # Because application is passed from catchup, and context from job queue
-        for chat_id in chat_ids:
-            morning_emojis = ["🌅", "🌄", "🕓"]
-            random_morning_emoji = random.choice()
-            if random.random() < 0.03:
-                    random_morning_emoji = "🧙‍♂️"
-            if random.random() < 0.03:
-                random_morning_emoji = "🍆" 
-            await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
-            await bot.send_message(chat_id=chat_id, text=f"✨{get_random_philosophical_message()}✨")
-            await bot.send_message(chat_id=chat_id, text="_Dagelijkse doelen weggetoverd_ 📢🧙‍♂️", parse_mode="Markdown")
-
+        # Iterate over each pending boost engagement
+        # Process each engager for each type separately
+        for engager_id, chat_id in pending_engagers:
+            engager_name = await get_first_name(user_id=engager_id)
+            escaped_engager_name = escape_markdown_v2(engager_name)
+            # Check if the engager has pending boosts using fetch_pending_engagements
+            pending_engagements = await fetch_pending_engagements(engager_id=engager_id)
+            if pending_engagements:
+                if "⚡" in pending_engagements:
+                    # If there are pending boosts, return them to the engager
+                    amount = pending_engagements.count("⚡")
+                    await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'boosts', amount = amount)
+                    await bot.send_message(chat_id=chat_id, text =f"Boost van {escaped_engager_name} bleef gisteren {amount} maal onverzilverd 🧙‍♂️\n\+{amount} ⚡ terug naar [{escaped_engager_name}](tg://user?id={engager_id})"
+                                   , parse_mode="MarkdownV2")
+                if "😈" in pending_engagements:
+                    amount = pending_engagements.count("😈")
+                    # different logic for challenges
+                    # If there are pending challenges, send a message about them and award +1 to engager, -1 to engaged
+                    await bot.send_message(chat_id=chat_id, text =f"Challenge van [{escaped_engager_name}](tg://user?id={engager_id}) niet ten tijde van 🧙‍♂️ Gevolgen moet ik nog implementeren 👀"
+                                   , parse_mode="MarkdownV2")
+                    print("! ! ! pending challenge(s) upon nightly reset\n\nnot yet implemented ! ! !")
+                
+                if "🔗" in pending_engagements:
+                    amount = pending_engagements.count("🔗")
+                    # different logic for links
+                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) niet ten tijde van 🧙‍♂️ Gevolgen moet ik nog implementeren 👀"
+                                   , parse_mode="MarkdownV2")
+                    print("! ! ! pending links upon nightly reset\n\nnot yet implemented ! ! !")
+                
     except Exception as e:
         print(f"Error resetting goal status: {e}")
         conn.rollback()
+        
+    try:
+        cursor.execute('''
+            UPDATE engagements
+            SET status = 'archived'
+            WHERE status = 'pending'           
+        ''')
+        conn.commit()
+    except Exception as e:
+        print(f"Error archiving engagements: {e}")
+        conn.rollback()
+        
+    # Update the last reset time
+    update_last_reset_time()
+
+    # Send reset message to all active chats
+        
+    for chat_id in chat_ids:
+        morning_emojis = ["🌅", "🌄"]
+        random_morning_emoji = random.choice(morning_emojis)
+        if random.random() < 0.03:
+                random_morning_emoji = "🧙‍♂️"
+        if random.random() < 0.03:
+            random_morning_emoji = "🍆" 
+        await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
+        await asyncio.sleep(3)  # To leave space for any pending engagement resolve messages 
+        await bot.send_message(chat_id=chat_id, text=f"✨{get_random_philosophical_message()}✨")
+        await bot.send_message(chat_id=chat_id, text="_Dagelijkse doelen weggetoverd_ 📢🧙‍♂️", parse_mode = "Markdown")
+
+
         
 def get_last_reset_time():
     try:
@@ -1670,7 +1791,7 @@ async def setup(application):
         job_queue = application.job_queue
         reset_time = time(hour=2, minute=0, second=0)
         job_queue.run_daily(reset_goal_status, time=reset_time)
-        print(f"Job queue set up successfully at {reset_time}")
+        print(f"\nJob queue set up successfully at {reset_time}")
 
         # Check if reset is needed on startup
         last_reset = get_last_reset_time()
@@ -1686,6 +1807,7 @@ async def setup(application):
             if last_reset is None or last_reset < reset_time_today:
                 # Perform the fallback reset
                 print("^ Perform catch-up reset ^\n")
+                await reset_goal_status(application)
             else:
                 print("^ No catch-up reset needed ^\n")  
         else:
@@ -1740,7 +1862,7 @@ def main():
         application.add_handler(CommandHandler(["inventaris", "inventory"], inventory_command))
         application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd"], gift_command))
         application.add_handler(CommandHandler(["steal", "steel", "sorry", "oeps"], steal_command))
-        application.add_handler(CommandHandler(["revert", "neee"], revert_goal_completion_command))
+        application.add_handler(CommandHandler(["revert", "neee", "oftochniet"], revert_goal_completion_command))
         application.add_handler(CommandHandler(["ranking", "tussenstand"], ranking_command))
         
         wipe_conv_handler = ConversationHandler(
