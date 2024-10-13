@@ -570,7 +570,7 @@ async def check_use_of_special(update, context, special_type):
     print(f"\n\n\n\nUser mentioned: {user_mentioned}\n\n\n\n")            
     # In case of no mentions, replies are checked
                 
-    if user_mentioned == False:
+    if not user_mentioned:
         if update.message.reply_to_message is None:
             await update.message.reply_text(f"🚫 Antwoord op iemands berichtje of gebruik een @-mention om ze te {special_type_verb}! 🧙‍♂️")
             print(f"{special_type_singular} couldn't be used by {engager_name}")
