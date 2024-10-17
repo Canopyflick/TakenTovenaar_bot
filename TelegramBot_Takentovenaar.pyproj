@@ -15,8 +15,6 @@
     <IsWindowsApplication>False</IsWindowsApplication>
     <LaunchProvider>Standard Python launcher</LaunchProvider>
     <EnableNativeCodeDebugging>False</EnableNativeCodeDebugging>
-    <Environment>TELEGRAM_BOT_TOKEN=7909612868:AAFNaDS_vF_Rq-HuhGU3kxNNP2oMMirvT50
-OPENAI_API_KEY=REVOKED_KEY_Bo-xe9ogROTS6o8G_thvgI8B_aUnqy_6lBrtyciXzLuEieIAvZ4s15psrT0xEA</Environment>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -27,7 +25,11 @@ OPENAI_API_KEY=REVOKED_KEY_Bo-xe9ogROTS6o8G_thvgI8B_aUnqy_6lBrtyciXzLuEieIAvZ4s1
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="handlers\challenge_handler.py" />
+    <Compile Include="handlers\commands.py" />
+    <Compile Include="handlers\wipe_handler.py" />
     <Compile Include="TelegramBot_Takentovenaar.py" />
+    <Compile Include="utils.py" />
   </ItemGroup>
   <ItemGroup>
     <Interpreter Include="env\">
@@ -42,6 +44,9 @@ OPENAI_API_KEY=REVOKED_KEY_Bo-xe9ogROTS6o8G_thvgI8B_aUnqy_6lBrtyciXzLuEieIAvZ4s1
   </ItemGroup>
   <ItemGroup>
     <InterpreterReference Include="Global|PythonCore|3.12" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="handlers\" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
