@@ -81,7 +81,7 @@ async def challenge_command_2(update, context, engager_id, engager_name, engaged
             'engaged_name': engaged_name
         }
         
-        challenge_message = f"😈 {engager_name} daagt {engaged_name} uit:\n\n_{rephrased_goal}_"
+        challenge_message = f"😈 {engager_name} daagt {engaged_name} uit:\n\n*{rephrased_goal}*"
         # tag engaged here if they weren't tagged when engager initialized the challenge
         if not user_mentioned:
             if not engaged_id:
