@@ -23,7 +23,7 @@ async def analyze_message(update, context):
             await update.message.reply_text("Er ging iets mis in analyze_message(), probeer het later opnieuw.")
             print(f"Error in analyze_message(): {e}")   
     else: 
-        await update.message.reply_text("Stiekem ben ik een beetje verlegen. Praat met me in een chat waar Ben bij zit, pas dan voel ik me op mijn gemak 🧙‍♂️")
+        await update.message.reply_text("Stiekem ben ik een beetje verlegen. Praat met me in een chat waar Ben bij zit, pas dan voel ik me op mijn gemak 🧙‍♂️\n\n\nPS: je kunt hier wel allerhande boodschappen ter feedback achterlaten, dan geef ik die door aan Ben (#privacy). Denk bijvoorbeeld aan feature requests, kwinkslagen, knuffelbedreigingen, valsspeelbiechten, slaapzakberichten etc.\nPPS: Die laatste bedacht ChatGPT. En ik quote: 'Een heel lang bericht, waarin je jezelf zou kunnen verliezen alsof je in een slaapzak kruipt.' Waarvan akte.")
         await notify_ben(update, context)
         return
 
@@ -78,7 +78,7 @@ async def reset_goal_status(context_or_application):
                 if "🔗" in live_engagements:
                     amount = live_engagements.count("🔗")
                     # different logic for links
-                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) niet ten tijde van 🧙‍♂️ Gevolgen moet ik nog implementeren 👀"
+                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️ Gevolgen moet ik nog implementeren 👀"
                                    , parse_mode="MarkdownV2")
                     print("! ! ! live links upon nightly reset\n\nnot yet implemented ! ! !")
                 
@@ -449,9 +449,30 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
             if result is None:
                 await update.message.reply_text("Lekker bezig! ✅ \n_+4 punten_"
                         , parse_mode="Markdown")
+                # record goal if not a challenge
+                try:
+                    await record_goal(user_id, chat_id, goal_text)
+                except Exception as e:
+                    print(f"Error recording goal: {e}")
                 return
             else:
                 emojis = await fetch_live_engagements(engaged_id = user_id)
+                if "😈" in emojis:
+                    try:
+                        cursor.execute('''
+                            SELECT engager_id 
+                            FROM engagements 
+                            WHERE engaged_id = %s 
+                            AND status = 'live' 
+                            AND chat_id = %s
+                            AND special_type = 'challenges'           
+                        ''', (user_id, chat_id))
+                        result = cursor.fetchone()
+                        engager_id = result[0] if result else None
+                        # record goal if challenge
+                        await record_goal(user_id, chat_id, goal_text, engager_id, is_challenge=True)
+                    except Exception as e:
+                        print(f"Error recording goal: {e}")
                 unescaped_emojis = emojis.replace('\\', '')
                 engaged_id = user_id
                 engaged_bonus_total, engager_bonuses = await calculate_bonuses(update, engaged_id, chat_id)
@@ -470,6 +491,42 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
         print(f"Error in goal_completion: {e}")
         conn.rollback()
         return
+
+
+async def record_goal(user_id, chat_id, goal_text, engager_id=None, is_challenge=False):
+    # Rephrase the goal for recording
+    rephrased_goal = goal_text  # In case rephrasing fails, just use original goal_text
+    try:
+        messages=[
+            {"role": "system", "content": "Herformuleer uitdagingen naar het format: '... X.'"},
+            {"role": "user", "content": "Vandaag had jij voor 11 uur het huis opgeruimd."},
+            {"role": "assistant", "content": "... ruimde voor 11 uur het huis op."},
+            {"role": "user", "content": "Je gaf Anne-Cathrine vandaag een massage."},
+            {"role": "assistant", "content": "...gaf Anne-Cathrine een massage."},
+            {"role": "user", "content": goal_text}
+        ] 
+        rephrased_goal = await send_openai_request(messages, temperature=0.1)  # Extract the rephrased goal from OpenAI response
+        print(f"*Rephrased goald for recording prompt: \n\n{messages}\n\nRephrased goal: {rephrased_goal}\n\n")
+    except Exception as e:
+        print(f"Error rephrasing goal_text for recording: {e}")
+        
+    # Record the completed goal in history
+    cursor.execute('''
+        INSERT INTO goal_history 
+            (user_id, chat_id, goal_text, goal_type, challenge_from)
+        VALUES 
+            (%s, %s, %s, %s, %s)
+    ''', (
+        user_id, 
+        chat_id, 
+        rephrased_goal,
+        'challenges' if is_challenge else 'personal',
+        engager_id
+    ))
+    conn.commit()
+    print(f"\n📚 DOEL OPGESLAGEN VOOR HET NAGESLACHT\n")
+    
+
 
 def get_bonus_for_special_type(special_type):
     if special_type == 'boosts':
@@ -1030,10 +1087,10 @@ def get_random_philosophical_message():
             "千里之行，始于足下",        
             "Ask, believe, receive ✨",   
             "A few words on looking for things. When you go looking for something specific, "
-    "your chances of finding it are very bad. Because, of all the things in the world, "
-    "you're only looking for one of them. When you go looking for anything at all, "
-    "your chances of finding it are very good. Because, of all the things in the world, "
-    "you're sure to find some of them",
+            "your chances of finding it are very bad. Because, of all the things in the world, "
+            "you're only looking for one of them. When you go looking for anything at all, "
+            "your chances of finding it are very good. Because, of all the things in the world, "
+            "you're sure to find some of them",
             "Je bent wat je eet",
             "If the human brain were so simple that we could understand it, we would be so simple that we couldn't",       
             "Believe in yourself",  
@@ -1043,8 +1100,8 @@ def get_random_philosophical_message():
             "A sufficiently intimate understanding of mistakes is indistinguishable from mastery",
             "He who does not obey himself will be commanded",
             "Elke dag is er wel iets waarvan je zegt: als ik die taak nou eens zou afronden, "  
-    "dan zou m'n dag meteen een succes zijn. Maar ik heb er geen zin in. Weet je wat, ik stel het "
-    "me als doel in de Telegramgroep, en dan ben ik misschien wat gemotiveerder om het te doen xx 🙃",
+            "dan zou m'n dag meteen een succes zijn. Maar ik heb er geen zin in. Weet je wat, ik stel het "
+            "me als doel in de Telegramgroep, en dan ben ik misschien wat gemotiveerder om het te doen xx 🙃",
             "All evils are due to a lack of Telegram bots",
             "Art should disturb the comfortable, and comfort the disturbed",
             "Genius is one per cent inspiration, ninety-nine per cent perspiration",
@@ -1227,11 +1284,14 @@ async def handle_regular_message(update, context):
     #    await update.message.reply_text("@Anne-Cathrine, ben je al aan het lezen? 🧙‍♂️😘")
     # Send into the void
     elif user_message == 'oké en we zijn weer live':
-        await context.bot.send_message(chat_id=update.message.chat_id, text="Database gereset hihi, allemaal ONvoLDoEnDe!\n\nMaar nu werk ik weer 🧙‍♂️", parse_mode="Markdown")
+        if await check_chat_owner(update, context):
+            await context.bot.send_message(chat_id=update.message.chat_id, text="Database gereset hihi, allemaal ONvoLDoEnDe!\n\nMaar nu werk ik weer 🧙‍♂️", parse_mode="Markdown")
     elif user_message == "Guess who's back...":
+        if await check_chat_owner(update, context):
             await context.bot.send_message(chat_id=update.message.chat_id, text="Tovenaartje terug ✨🧙‍♂️", parse_mode="Markdown")        
     elif user_message == 'whoops..!':
-        await context.bot.send_message(chat_id=update.message.chat_id, text="*Ik ben voorlopig kapot. Tot later!* 🧙‍♂️", parse_mode="Markdown")
+        if await check_chat_owner(update, context):
+            await context.bot.send_message(chat_id=update.message.chat_id, text="*Ik ben voorlopig kapot. Tot later!* 🧙‍♂️", parse_mode="Markdown")
 
     # Dice-roll
     elif user_message.isdigit() and 1 <= int(user_message) <= 6:
@@ -1243,12 +1303,12 @@ async def handle_regular_message(update, context):
         if "krom" in user_message.lower():
             reaction = "👀"
             await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
+            print(reaction)
             return
         else:
             await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
+            print(reaction)
             return
-        reaction = "🍌"
-        await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)        
 
     # Nightly reset simulation
     elif user_message == '666':
@@ -1268,9 +1328,17 @@ async def handle_regular_message(update, context):
                 print(f"Error: {e}")
 
     elif user_message == '777':
-        if await check_chat_owner(update, context):
+        chat_type = update.effective_chat.type
+        # Check if the chat is private or group/supergroup
+        if chat_type == 'private':
             chat_id = update.effective_chat.id
             await reset_to_testing_state(update, context)
+        else:
+            # If it's not a private chat, proceed with checking for chat ownership
+            if await check_chat_owner(update, context):
+                chat_id = update.effective_chat.id
+                await reset_to_testing_state(update, context)
+
                 
     # Special_type drop 
 

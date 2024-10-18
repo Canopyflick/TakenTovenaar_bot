@@ -132,7 +132,11 @@ async def handle_challenge_response(update, context):
     # Get engagement data from context
     engagement_data = context.chat_data.get(engagement_id)
     if not engagement_data:
-        await query.answer(text=f"🚫 Foutje! Deze en eerdere pending challenges zijn kapot. Probeer het met een nieuwe 🐛🧙‍♂️\nDe uitdager is z'n 😈 kwijt, moet Ben ff teruggeven xx")
+        await context.bot.send_message(
+            chat_id=query.from_user.id,
+            text="🚫 *Foutje!* 🐛\n\nJe drukte op een verlopen knop. Deze en eerdere 'pending challenges' (uitdagingen die nog niet geaccepteerd, afgewezen, of ingetrokken waren) zijn kapot.\nProbeer het met een nieuwe(re) nog eens 🧙‍♂️\n\n_NB: de uitdager is z'n 😈 kwijt, moet Ben ff teruggeven als hij dat nog niet gedaan heeft xx_",
+            parse_mode="Markdown"
+        )
         # await add_special(engager_id, chat_id, "challenges")  # dit kan nog niet, want variabelen gaan verloren bij deze fout (herstart app)
         return ConversationHandler.END
     
@@ -167,7 +171,7 @@ async def handle_challenge_response(update, context):
                 await add_special(engager_id, chat_id, "challenges")
                 if not engaged_id:
                     await query.edit_message_text(
-                    f"{engager_name} heeft de uitdaging aan niemand in het bijzonder ingetrokken\n_+1 😈_",
+                    f"{engager_name} heeft de uitdaging aan _niemand in het bijzonder_ ingetrokken\n_+1 😈_",
                     parse_mode="Markdown"
                     )
                 else:

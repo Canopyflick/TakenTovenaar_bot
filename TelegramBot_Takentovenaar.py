@@ -140,6 +140,22 @@ try:
     # Add missing columns
     add_missing_columns(cursor, 'users', desired_columns_users)
     conn.commit()
+
+    #4 goal history table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS goal_history (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT,
+        chat_id BIGINT,
+        goal_text TEXT NOT NULL,
+        completion_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        goal_type TEXT NOT NULL DEFAULT 'personal', -- 'personal' or 'challenges'
+        challenge_from BIGINT,  -- NULL for personal goals, user_id of challenger for challenges
+        FOREIGN KEY (user_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
+        FOREIGN KEY (challenge_from, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE
+    );
+    ''')
+    conn.commit()
     
 except Exception as e:
     print(f"Error updating database schema: {e}")
@@ -212,7 +228,7 @@ async def notify_ben(update,context):
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
         message = update.message.text
-        notification_message = f"Iemand heeft me achter jouw rug om benaderd, ben je jaloers? 🧙‍♂️\n\nUser: {first_name}, {user_id}\nChat: {chat_id}\nMessage: {message}"
+        notification_message = f"You've got mail ✉️🧙‍♂️\n\nUser: {first_name}, {user_id}\nChat: {chat_id}\nMessage:\n{message}"
         print(f"! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! \n\n\n\nUnauthorized Access Detected\n\n\n\n! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! ! !\nUser: {first_name}, {user_id}\nChat: {chat_id}\nMessage: {message}")
         await context.bot.send_message(chat_id=USER_ID, text=notification_message)
         
