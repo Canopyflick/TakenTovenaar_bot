@@ -118,7 +118,7 @@ try:
         CREATE TABLE IF NOT EXISTS engagements (
             id BIGSERIAL PRIMARY KEY,
             engager_id BIGINT NOT NULL,
-            engaged_id BIGINT NOT NULL,
+            engaged_id BIGINT,
             chat_id BIGINT NOT NULL,
             special_type TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

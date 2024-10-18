@@ -1,9 +1,10 @@
-﻿from utils import conn, cursor, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
+﻿from TelegramBot_Takentovenaar import get_first_name
+from utils import add_special, conn, cursor, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
 
 
 # Asynchronous command functions
 async def start_command(update, context):
-    await update.message.reply_text('Hoi! 👋🧙‍♂️\n\nIk ben Taeke Toekema Takentovenaar. Stuur mij berichtjes, bijvoorbeeld om je dagdoel in te stellen of te voltooien, of me te vragen waarom bananen krom zijn. Gebruik "@" met mijn naam, bijvoorbeeld zo:\n\n"@TakenTovenaar_bot ik wil vandaag 420 gram groenten eten" \n\nDruk op >> /help << voor meer opties.')
+    await update.message.reply_text('Hoi! 👋🧙‍♂️\n\nIk ben Taeke Toekema Takentovenaar. Stuur mij berichtjes, bijvoorbeeld om je dagdoel in te stellen of te voltooien, of me te vragen waarom bananen krom zijn. Antwoord op mijn berichten of gebruik tag me, bijvoorbeeld zo:\n\n"@TakenTovenaar_bot ik wil vandaag 420 gram groenten eten" \n\nDruk op >> /help << voor meer opties.')
 
 
 async def help_command(update, context):
@@ -167,7 +168,7 @@ async def acties_command(update, context):
         '- _/boost @Willem_\n\n'
         '- _/challenge @Josefietje om voor 11u weer thuis te zijn voor de koffie_\n\n'
         'Druk op >> /details << voor meer info over acties.\n\n'
-        '🚧 _under construction_'
+        '🚧 _under construction, werkt nog niet_'
     )
     await update.message.reply_text(acties_message, parse_mode="Markdown")
     
@@ -210,12 +211,20 @@ async def gift_command(update, context):
 async def steal_command(update, context):
     if await check_chat_owner(update, context):
         if len(context.args) > 0:  # Check if an argument (like a number) was provided
-            amount = int(context.args[0])
-            await handle_admin(update, context, 'steal', amount)
-        else:
-            amount = 1
-            await handle_admin(update, context, 'steal', amount)
-            return
+            arg = context.args[0]
+            if arg.isdigit():  # If the argument is a number, treat it as an amount
+                amount = int(context.args[0])
+                await handle_admin(update, context, 'steal', amount)
+                return
+            else: # If the arguments is a string, treat it as a special_type
+                special_type = arg
+                user_id = update.message.reply_to_message.from_user.id
+                first_name = await get_first_name(context, user_id)
+                chat_id = update.effective_chat.id
+                print(f"Special type stolen = {special_type}")
+                await add_special(user_id, chat_id, special_type, -1)
+                await update.message.reply_text(f"Taeke Takentovenaar grist weg 🥷\n_-1 {special_type} van {first_name}_", parse_mode = "Markdown")
+                return
     else:
         message = get_random_philosophical_message()
         await update.message.reply_text(message)
@@ -315,7 +324,7 @@ async def handle_admin(update, context, type, amount=None):
 
                 # Get the emoji for the given special_type
                 special_type_emoji = emoji_mapping.get(special_type, '')
-                await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+1 {special_type}{special_type_emoji} voor {first_name}_", parse_mode="Markdown")
+                await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+1{special_type_emoji} voor {first_name}_", parse_mode="Markdown")
             except Exception as e:
                 await update.message.reply_text(f"Error: {e}")
                 conn.rollback()
@@ -328,13 +337,15 @@ async def boost_command(update, context):
 
 
 async def link_command(update, context):
-    await check_use_of_special(update, context, 'links')
-    # not yet built
+    await update.message.reply_text("🚧 Links werken nog niet 🧙‍♂️")
+    print("UNDER CONSTRUCTION")
     return
+    # await check_use_of_special(update, context, 'links')
+    # return
 
 
 async def ranking_command(update, context):
-    update.message.reply_text("UNDER CONSTRUCTION")
+    await update.message.reply_text("🚧 Wordt aan gewerkt 🧙‍♂️")
     print("UNDER CONSTRUCTION")
     return
 

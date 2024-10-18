@@ -193,12 +193,24 @@ async def check_use_of_special(update, context, special_type):
                
                 print(f"Username mentioned: {username}, engaged_name is {engaged_name}")
     print(f"\n\nUser mentioned: {user_mentioned}\n\n")            
+    
+    challenged_id = engaged_id
+
     # In case of no mentions, replies are checked
-                
     if not user_mentioned:
         if update.message.reply_to_message is None:
-            await update.message.reply_text(f"🚫 Antwoord op iemands berichtje of gebruik een @-mention om ze te {special_type_verb}! 🧙‍♂️")
-            print(f"{special_type_singular} couldn't be used by {engager_name}")
+            if special_type == "challenges":
+                warning_message = await update.message.reply_text(
+                f"⚠️ _Je stuurt een open uitdaging, zonder tag en niet als antwoord op andermans berichtje.\nTrek je uitdaging in als dit niet de bedoeling was_ 🧙‍♂️", 
+                parse_mode = "Markdown"
+                )
+                await asyncio.sleep(3)
+                # Schedule the deletion of the message as a background task
+                asyncio.create_task(delete_message(context, chat_id, warning_message.message_id))
+            else:    
+                await update.message.reply_text(f"🚫 Antwoord op iemands berichtje of gebruik een @-mention om ze te {special_type_verb}! 🧙‍♂️")
+                print(f"{special_type_singular} couldn't be used by {engager_name}")
+                return False
         else:
             engaged = update.message.reply_to_message.from_user
             engaged_id = engaged.id
@@ -248,34 +260,46 @@ async def check_use_of_special(update, context, special_type):
         # Storing all the variables for challenge_command_2
         context.chat_data['engager_id'] = engager_id
         context.chat_data['engager_name'] = engager_name
-        context.chat_data['engaged_id'] = engaged_id
+        # Storing a different engaged_id in case of an open challenge
+        if not challenged_id:
+            context.chat_data['engaged_id'] = None
+        if challenged_id:
+            context.chat_data['engaged_id'] = engaged_id
+            live_engagements = await fetch_live_engagements(engaged_id=engaged_id)
+            if live_engagements:
+                if "😈" in live_engagements:
+                    await update.message.reply_text(f"🚫 {engaged_name} heeft vandaag al een andere uitdaging geaccepteerd 🧙‍♂️") #88
+                    return False
         context.chat_data['engaged_name'] = engaged_name
         context.chat_data['user_mentioned'] = user_mentioned
         print(f"...terug naar challenge_command\n")
         return True     # < < < < < challenges go out here, and will complete_new_engagement separately, once the engaged user accepts 
     print(f"...complete_new_engagement\n")
-    if await complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):   # < < < < < boosts and links go in here
-                
-            emoji_mapping = {
-                'boosts': '⚡',
-                'links': '🔗',
-                'challenges': '😈'
-            }
+    if await complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):    # < < < < < boosts and links go in here      
+        emoji_mapping = {
+            'boosts': '⚡',
+            'links': '🔗',
+            'challenges': '😈'
+        }
 
-            # Get the emoji for the given special_type
-            special_type_emoji = emoji_mapping.get(special_type, '')
-            await update.message.reply_text(f"{special_type_emoji}")
-            escaped_engager_name = escape_markdown_v2(engager_name)
-            escaped_engaged_name = escape_markdown_v2(engaged_name)
-            await context.bot.send_message(chat_id=update.effective_chat.id, text =f"{escaped_engager_name} {special_type} [{escaped_engaged_name}](tg://user?id={engaged_id}) 🧙‍♂️"
-                                            , parse_mode="MarkdownV2")
-            # await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
-            print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
+        # Get the emoji for the given special_type
+        special_type_emoji = emoji_mapping.get(special_type, '')
+        await update.message.reply_text(f"{special_type_emoji}")
+        escaped_engager_name = escape_markdown_v2(engager_name)
+        escaped_engaged_name = escape_markdown_v2(engaged_name)
+        await context.bot.send_message(chat_id=update.effective_chat.id, text =f"{escaped_engager_name} {special_type} [{escaped_engaged_name}](tg://user?id={engaged_id}) 🧙‍♂️"
+                                        , parse_mode="MarkdownV2")
+        # await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
+        print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
     else:
-        await update.message.reply_text(f"🚫 Deze persoon staat (nog) niet in de database! 🧙‍♂️ \n(hij/zij moet eerst een doel stellen)")  #77
+        await update.message.reply_text(f"🚫 Uhhh.. staat deze persoon misschien (nog) niet in de database? 🧙‍♂️ \n(hij/zij moet in dat geval eerst een doel stellen)")  #77
         print(f"Engagement Failed op de valreep.")
+  
         
-
+async def delete_message(context, chat_id, message_id, delay=8):
+    await asyncio.sleep(delay)
+    await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    
     
 async def check_special_balance(engager_id, chat_id, special_type):
     try:    
@@ -556,14 +580,29 @@ async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, e
         raise
 
     
-def check_live_engagement(cursor, user_id, chat_id):  
-    cursor.execute('''
+def check_live_engagement(cursor, user_id, chat_id, special_type=None):
+    # Base query
+    query = '''
         SELECT id, engager_id, special_type 
         FROM engagements 
         WHERE engaged_id = %s AND chat_id = %s AND status = 'live'
-    ''', (user_id, chat_id))
+    '''
+    
+    # Parameters for the query
+    params = [user_id, chat_id]
+    
+    # If special_type is provided, add it to the query
+    if special_type is not None:
+        query += " AND special_type = %s"
+        params.append(special_type)
+    
+    # Execute the query with the appropriate parameters
+    cursor.execute(query, params)
+    
+    # Fetch and return the result
     live_engagement = cursor.fetchone()
     return live_engagement
+
 
 # Assistant_response == 'Overig'  
 async def handle_unclassified_mention(update):
@@ -652,18 +691,14 @@ async def roll_dice(update, context):
 
 async def complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type, status='live'):
     try:
-        
         user_id = engager_id
         cursor.execute('''
             INSERT INTO engagements 
             (engager_id, engaged_id, chat_id, special_type, created_at, status)
             VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s)
-            ON CONFLICT (engager_id, engaged_id, special_type, chat_id)
-            DO UPDATE SET 
-                created_at = CURRENT_TIMESTAMP,
-                status = 'live'
             RETURNING id;
         ''', (engager_id, engaged_id, chat_id, special_type, status))
+
         # Update inventory to sutract 1 engagement
         # Dynamically construct the JSON path string
         path = '{' + special_type + '}'
@@ -708,7 +743,7 @@ async def show_inventory(update, context):
                 f"{emoji_mapping.get(item, '')} {item}: {count}"
                 for item, count in inventory.items()
             )
-            await update.message.reply_text(f"*Moves van {first_name}*\n{inventory_text}", parse_mode="Markdown")
+            await update.message.reply_text(f"*Acties van {first_name}*\n{inventory_text}", parse_mode="Markdown")
     except Exception as e:
         print(f"Error showing inventory: {e}")
         
@@ -770,6 +805,7 @@ async def add_special(user_id, chat_id, special_type, amount=1):
     
         # Execute the query, passing the dynamic path and safe parameters
         cursor.execute(query, (path, special_type, amount, user_id, chat_id, special_type))
+        print(f"Added {amount} {special_type} for {user_id}")
         conn.commit()
     except Exception as e:
         print(f"Error add_special: {e}")
@@ -1232,18 +1268,21 @@ async def handle_regular_message(update, context):
                 print(f"Error: {e}")
 
     elif user_message == '777':
-        await reset_to_testing_state(update, context)
+        if await check_chat_owner(update, context):
+            chat_id = update.effective_chat.id
+            await reset_to_testing_state(update, context)
                 
     # Special_type drop 
 
     elif user_message.lower().startswith('giv') and user_message.endswith('s'):
-        if 'boosts' in user_message:
-            await giv_specials(update, context, 'boosts')
-        if 'links' in user_message:
-            await giv_specials(update, context, 'links')
-        if 'challenges' in user_message:
-            await giv_specials(update, context, 'challenges')            
-            return
+        if await check_chat_owner(update, context):
+            if 'boosts' in user_message:
+                await giv_specials(update, context, 'boosts')
+            if 'links' in user_message:
+                await giv_specials(update, context, 'links')
+            if 'challenges' in user_message:
+                await giv_specials(update, context, 'challenges')            
+                return
         
 async def giv_specials(update, context, special_type):
     try:
