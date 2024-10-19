@@ -246,10 +246,7 @@ async def handle_challenge_response(update, context):
                 ''', (goal_text, score, total_goals_delta, engaged_id, chat_id,))
                 
                 conn.commit()
-                await query.edit_message_text(
-                    f"{engaged_name} heeft de uitdaging van [{engager_name}](tg://user?id={engager_id}) geaccepteerd! 🧙‍♂️\n_+1 punt voor {engager_name}_",
-                    parse_mode="Markdown"
-                )
+
             except Exception as e:
                 print(f"Error processing accept in database: {e}")
                 await query.answer("Er is een fout opgetreden bij het verwerken van de acceptatie.")
