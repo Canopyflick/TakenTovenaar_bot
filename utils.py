@@ -1350,7 +1350,7 @@ async def handle_regular_message(update, context):
             except Exception as e:
                 print(f"Error running 888-poll: {e}")
 
-    elif user_message == '999':
+    elif user_message == 'voegneppedoelentoe':
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
             try:
@@ -1373,49 +1373,81 @@ async def handle_regular_message(update, context):
                             )
                         END as challenge_from
                     FROM (
-                        VALUES 
-                            ('knuffelde de kerstman.'),
-                            ('deed de afwas voordat Anne-Cathrine thuis kwam.'),
-                            ('rende 4 km.'),
-                            ('schreef een lief kaartje voor de buren.'),
-                            ('kookte een driegangendiner voor vrienden.'),
-                            ('las een heel boek in één dag.'),
-                            ('maakte een schilderij van de zonsondergang.'),
-                            ('belde met opa om te horen hoe het met hem gaat.'),
-                            ('ging een uur wandelen in het bos.'),
-                            ('organiseerde een filmavond voor de familie.'),
-                            ('leerde een nieuw gerecht te maken.'),
-                            ('gaf geld aan een straatmuzikant.'),
-                            ('voltooide een moeilijke puzzel.'),
-                            ('speelde een bordspel met vrienden.'),
-                            ('gaf een presentatie zonder zenuwen.'),
-                            ('ging naar een museum en leerde iets nieuws.'),
-                            ('maakte een lijst van dingen waar ik dankbaar voor ben.'),
-                            ('schreef een blogpost over persoonlijke groei.'),
-                            ('ruimde de garage volledig op.'),
-                            ('zette de kerstboom op zonder te klagen.'),
-                            ('gaf mezelf een dagje rust en ontspanning.'),
-                            ('liep een halve marathon.'),
-                            ('bakte een taart voor de verjaardag van een vriend.'),
-                            ('leerde een nieuwe taal online.'),
-                            ('hielp een collega met een lastige taak.'),
-                            ('ging naar de sportschool drie keer deze week.'),
-                            ('organiseerde een picknick in het park.'),
-                            ('mediteerde elke ochtend deze week.'),
-                            ('las elke avond voor het slapen gaan.'),
-                            ('haalde mijn rijbewijs na veel oefenen.'),
-                            ('plantte bloemen in de tuin.'),
-                            ('maakte een fotoboek van de afgelopen vakantie.'),
-                            ('liet de hond elke ochtend uit.'),
-                            ('hielp een vriend verhuizen naar een nieuw huis.'),
-                            ('kocht een cadeau voor een vriendin zonder reden.'),
-                            ('probeerde een nieuwe hobby: pottenbakken.'),
-                            ('haalde het huis op tijd voor de lente schoonmaak.'),
-                            ('belde mijn ouders elke avond deze week.'),
-                            ('genoot van een dag zonder telefoon.'),
-                            ('maakte een roadtrip naar een onbekende stad.')
-                        ) AS goals(goal_text)
-                ''')
+                    VALUES 
+                        ('won een wedstrijd in slaapzakracen.'),
+                        ('slaagde erin om koffie te zetten zonder eerst te knoeien.'),
+                        ('bedacht een heel nieuwe taal tijdens een douchebeurt.'),
+                        ('gaf een TED-talk aan mijn kat.'),
+                        ('vond de verloren afstandsbediening na drie jaar.'),
+                        ('liet de stofzuiger zelfstandig de woonkamer schoonmaken.'),
+                        ('deed alsof ik mijn huisplant motiveerde met een peptalk.'),
+                        ('versloeg een groep eekhoorns in een potje schaak.'),
+                        ('bracht de vuilnis weg zonder mentaal voorbereid te zijn.'),
+                        ('haalde pizza van de grond in één stuk tijdens een val.'),
+                        ('kreeg een vreemdeling zover mij op straat te highfiven.'),
+                        ('ontdekte het geheim van de perfecte tosti door toeval.'),
+                        ('maakte vrienden met een robotstofzuiger.'),
+                        ('overtuigde een kat om vrijwillig in bad te gaan.'),
+                        ('at een hele pot pindakaas leeg tijdens een Zoom-vergadering.'),
+                        ('leerde mijn cactus pianospelen.'),
+                        ('won een staarwedstrijd van een uil in de dierentuin.'),
+                        ('hield een volledig gesprek met mijn spiegelbeeld.'),
+                        ('deed alsof ik een talkshowhost was tijdens het afwassen.'),
+                        ('ontdekte een nieuw sterrenbeeld door willekeurige stippen te verbinden.'),
+                        ('deelde een filosofisch moment met een duif.'),
+                        ('veranderde mijn schoenen zonder op mijn handen te kijken.'),
+                        ('besloot de keuken te vegen met een ritmische dansbeweging.'),
+                        ('leerde mijn hond poker (hij blufft verrassend goed).'),
+                        ('ontving een staande ovatie van mijn kussens na een dutje.'),
+                        ('ben erin geslaagd een kaasschaaf als kunstwerk te beschouwen.'),
+                        ('repareerde mijn telefoon door hem liefdevol aan te kijken.'),
+                        ('sprak de hele dag alleen in rijm.'),
+                        ('verstopte mini-pompoennetjes door het hele kantoor.'),
+                        ('organiseerde een formeel galadiner voor mijn hamster.'),
+                        ('sliep een hele nacht zonder het dekbed te stelen van mijn partner.'),
+                        ('leerde mijn goudvis trucjes.'),
+                        ('deed alle huishoudelijke taken op rollerskates.'),
+                        ('hield een TEDtalk voor mijn planten.'),
+                        ('gebruikte alleen emojis om te communiceren op werk.'),
+                        ('trainde voor een marathon door Netflix-series te bingen.'),
+                        ('maakte een documentaire over het leven van mijn stofzuigerrobot.'),
+                        ('schreef een liefdesbrief aan een pizzabezorger.'),
+                        ('hield een professionele fotoshoot met mijn sokken.'),
+                        ('overleefde een hele dag zonder koffie te morsen.'),
+                        ('deed alle meetings vandaag ondersteboven hangend.'),
+                        ('vertelde mijn buurman dat zijn kat mijn belastingaangifte heeft gedaan.'),
+                        ('won een debat met mezelf in de spiegel.'),
+                        ('maakte een Instagram account voor mijn plant.'),
+                        ('organiseerde een verrassingsfeest voor mijn schaduw.'),
+                        ('ging naar de supermarkt verkleed als een avocado.'),
+                        ('gaf een powerpoint presentatie aan mijn rubber eendjes.'),
+                        ('deed alsof ik een geheim agent was tijdens het boodschappen doen.'),
+                        ('sprak een hele dag met een Brits accent.'),
+                        ('leerde mijn computer handstand maken.'),
+                        ('deed een interpretative dans voor mijn wasmachine.'),
+                        ('hield een ted talk over waarom sokken altijd kwijtraken.'),
+                        ('organiseerde een date tussen mijn printer en mijn laptop.'),
+                        ('deed een hele vergadering met een filter van een aardappel.'),
+                        ('schreef een gedicht over mijn WiFi-router.'),
+                        ('verloor een gevecht tegen een stuk plakband.'),
+                        ('verzon een complottheorie over waarom duiven niet echt zijn.'),
+                        ('hield een talentenjacht voor de buurtkatten.'),
+                        ('gooide een perfecte driepunter met een vuile sok in de wasmand.'),
+                        ('liet per ongeluk een lepel in de magnetron en het resultaat leek op modern kunst.'),
+                        ('verspreidde per ongeluk confetti bij het openen van een envelop.'),
+                        ('versloeg een overijverige zwerver in een potje armpje drukken.'),
+                        ('ontdekte een geheimzinnig deurtje in mijn keukenkastje.'),
+                        ('zag per ongeluk een UFO tijdens het aanstaren van de lucht.'),
+                        ('verzon een nieuwe sport: extreme bankhangen.'),
+                        ('versloeg mijn eigen record in "zo lang mogelijk zonder te knipperen".'),
+                        ('gaf een post-it een pep talk voor zijn belangrijke rol op de koelkast.'),
+                        ('vond eindelijk het sokkenmonster en sloot vrede.'),
+                        ('ving een sneeuwvlok met mijn tong voordat die smolt.'),
+                        ('kocht een cactus en gaf hem per ongeluk een naam.'),
+                        ('organiseerde een kussengevecht met mezelf... en verloor.'),
+                        ('slaagde erin om de magnetron te programmeren voor een compleet gekke tijd.')
+                    ) AS goals(goal_text);
+                                ''')
                 conn.commit()
                 print("Successfully inserted dummy goals")
             except Exception as e:
@@ -1647,17 +1679,19 @@ async def create_weekly_goals_poll(context, chat_id):
         # Store the poll in bot_data
         context.bot_data[poll_message.poll.id] = poll_message
         
-        # Schedule a job to retrieve the poll results 4 hours later (short timedelta for testing purposes)
+        # Schedule a job to retrieve the poll results 12 hours later
         context.job_queue.run_once(
             retrieve_poll_results,
-            timedelta(hours=4),
+            timedelta(minutes=720),
             data={"chat_id": chat_id, "message_id": poll_message.message_id, "poll_id": poll_message.poll.id}
         )
-        closing_time = datetime.now() + timedelta(hours=4)
+        closing_time = datetime.now() + timedelta(minutes=721)
+        closing_time_formatted = closing_time.strftime('%H:%M')
+
         await asyncio.sleep(5)
         await context.bot.send_message(
             chat_id=chat_id,
-            text=f"_De poll zal sluiten om: {closing_time}🧙‍♂️", parse_mode = "Markdown"
+            text=f"De poll zal sluiten om: *{closing_time_formatted}* 🧙‍♂️", parse_mode = "Markdown"
         )
 
         conn.commit()
@@ -1665,7 +1699,7 @@ async def create_weekly_goals_poll(context, chat_id):
         print(f"Error creating weekly goals poll: {e}")
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Weekly goals poll viel in het water 🧙‍♂️"
+            text="Weekly goals poll viel ergens in het water 🐛🧙‍♂️"
         )
         conn.rollback()
 
@@ -1688,10 +1722,11 @@ async def retrieve_poll_results(context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(
     chat_id=chat_id,
     text="Laatste kans om te stemmen. De poll gaat over 1 minuut sluiten 🧙‍♂️")
-    asyncio.sleep(60)
+    await asyncio.sleep(70)
     await context.bot.send_message(
     chat_id=chat_id,
     text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen 🧙‍♂️")
+    asyncio.sleep(2)
     await context.bot.send_message(
     chat_id=chat_id,
     text="😳")
@@ -1742,7 +1777,7 @@ async def award_poll_rewards(context, chat_id, top_results):
         # Handle the error appropriately
         await context.bot.send_message(
         chat_id=chat_id,
-        text=f"🏆 Here are the top 3 goals from the poll:\n\n{top_results}\n\npunten uitdelen is niet gelukt, dat moet Ben dus maar zelf even doen 🧙‍♂️"
+        text=f"🏆 Top 3 doelen uit de poll:\n\n{top_results}\n\npunten uitdelen is niet gelukt, dat moet Ben dus maar zelf even doen 🧙‍♂️"
         )
         return
 
@@ -1896,7 +1931,6 @@ async def award_poll_rewards(context, chat_id, top_results):
         
     except Exception as e:
         print(f"Error in award_poll_rewards: {e}")
-        # If GPT selection fails, take the 10 most recent goals as fallback
         return print(f'wh00ps')
     
 

@@ -254,9 +254,9 @@ async def setup(application):
         job_queue.run_daily(
             create_weekly_goals_poll, 
             time=poll_time, 
-            days=(6,),  # Sunday
+            days=(5,),  # Saturday
         )
-        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Sunday")
+        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday")
 
         from utils import get_last_reset_time
         # Check if reset is needed on startup
