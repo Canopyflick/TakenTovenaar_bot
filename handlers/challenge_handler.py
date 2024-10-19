@@ -92,7 +92,7 @@ async def challenge_command_2(update, context, engager_id, engager_name, engaged
         # add a lil overwrite current goal reminder if engaged already set a day goal, or if it's an open challenge (no engaged_id) 
         if engaged_id:
             if await fetch_goal_status(update, engaged_id) == 'set':
-                challenge_message += "\n\n⚠️ _je ingestelde dagdoel wordt overschreven als je accepteert_"
+                challenge_message += "\n\n⚠️ _een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
         if not engaged_id:
             challenge_message += "\n\n⚠️ _een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
             
@@ -199,7 +199,7 @@ async def handle_challenge_response(update, context):
                     if await check_identical_engagement(engager_id, engaged_id, "challenges", chat_id):
                         await query.answer(text=f"🚫 Jij hebt vandaag al een uitdaging van {engager_name} geaccepteerd 🧙‍♂️\n(of er loopt nog een ander uitdagingsverzoek op jou)", show_alert=True)
                         return
-                    live_engagements = await fetch_live_engagements(engaged_id=engaged_id)
+                    live_engagements = await fetch_live_engagements(chat_id, engaged_id=engaged_id)
                     if live_engagements:
                         if "😈" in live_engagements:
                             await query.answer(text=f"🚫 {engaged_name} heeft vandaag al een andere uitdaging geaccepteerd 🧙‍♂️") #88
@@ -210,6 +210,7 @@ async def handle_challenge_response(update, context):
                             SET engaged_id = %s
                             WHERE id = %s AND chat_id = %s;
                         ''', (engaged_id, engagement_id, chat_id))
+                        await context.bot.send_message(chat_id, text="😈")
                         await query.edit_message_text(
                         f"{engaged_name} heeft de uitdaging van [{engager_name}](tg://user?id={engager_id}) geaccepteerd! 🧙‍♂️\n_+1 punt voor {engager_name}_",
                         parse_mode="Markdown"

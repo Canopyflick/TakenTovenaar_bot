@@ -77,9 +77,9 @@ async def stats_command(update, context):
             if set_time:
                 set_time = set_time[0]
                 formatted_set_time = set_time.strftime("%H:%M")
-            if await fetch_live_engagements(engaged_id = user_id):
+            if await fetch_live_engagements(chat_id, engaged_id = user_id):
                 print(f"user_id: {user_id}")
-                escaped_emoji_string = await fetch_live_engagements(engaged_id = user_id)
+                escaped_emoji_string = await fetch_live_engagements(chat_id, engaged_id = user_id)
                 stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}"
     
             else:
@@ -108,8 +108,8 @@ async def reset_command(update, context):
     chat_id = update.effective_chat.id
     if has_goal_today(user_id, chat_id):
         # don't allow resets if challenged
-        if await fetch_live_engagements(engaged_id = user_id):
-            if "😈" in await fetch_live_engagements(engaged_id = user_id):
+        if await fetch_live_engagements(chat_id, engaged_id = user_id):
+            if "😈" in await fetch_live_engagements(chat_id, engaged_id = user_id):
                 goal_text = fetch_goal_text(update, context)   
                 await update.message.reply_text(f"Challenge reeds accepted. 😈 Er is geen weg meer terug 👻🧙‍♂️\n_{goal_text}_", parse_mode = "Markdown")        
                 return False
@@ -160,8 +160,8 @@ async def acties_command(update, context):
     acties_message = (
         '*Alle beschikbare acties*\n'
         '⚡ */boost* - Boost andermans doel, verhoog de inzet!\n\n'
-        '😈 */challenge* - Daag iemand uit: "Doe vandaag X!"\n\n'
-        '🔗 */link* - Verbind je lot met een ander... (🚧)\n\n'
+        '😈 */challenge* - Daag iemand uit om iets specifieks te doen."\n\n'
+        '🤝 */link* - Verbind je lot met een ander... (🚧)\n\n'
         '*Zo zet je ze in*\n'
         'Gebruik je actie door met het passende commando op een berichtje van je doelwit '
         'te reageren, of hen na het commando te taggen:\n\n'
@@ -176,12 +176,13 @@ async def acties_command(update, context):
 async def details_command(update, context):
     details_message = (
         '*Extra uitleg over de acties*\n\n'
-        '⚡ Met een *boost* krijgen jij en je doelwit *+1* punt als zij hun doel halen.\nHalen zij hun doel die dag niet, dan krijg jij je boost terug.\n\n'
+        '⚡ *Boost* je andermans doel, dan krijgen jij en je doelwit *+1* punt als ze het halen.\nHalen zij hun doel die dag niet, dan krijg jij je boost terug.\n\n'
         '😈 *Challenge* iemand om iets specifieks te doen vandaag. Jij krijgt *+1* punt zodra de uitdaging geaccepteerd wordt, en zij overschrijven hun dagdoel (als ze dat '
-        'al ingesteld hadden.) De ander krijgt *+2* punten bij voltooiing.\nWordt de uitdaging niet geaccepteerd, dan krijg jij je challenge-actie terug.\n\n '
-        '🔗(🚧) Een *link* verbindt jouw doel met dat van een ander. Nu moeten jullie allebei je dagdoel halen om *+2* punten bonus pp te verdienen.\nLukt dit '
+        'al ingesteld hadden.) De ander krijgt *+2* punten bij voltooiing. Als je bij je challenge niemand tagt of beantwoordt, stuur je een open uitdaging. Die kan kan dan door iedereen '
+        'worden geaccepteerd.\nWordt de uitdaging niet geaccepteerd, dan krijg jij je challenge-actie einde dag weer terug.\n\n '
+        '🤝(🚧) *Link* jouw doel met dat van een ander. Nu moeten jullie allebei je dagdoel halen om *+2* punten bonus pp te verdienen.\nLukt dit '
         'een van beiden niet, dan verlies jij *-1* punt (en zij hun kans op bonus).\n\n'
-        '🚧_under construction_'
+        '🚧_under construction, links werken nog niet_'
     )
     await update.message.reply_text(details_message, parse_mode="Markdown")
 
@@ -318,8 +319,8 @@ async def handle_admin(update, context, type, amount=None):
                 conn.commit()
                 emoji_mapping = {
                     'boosts': '⚡',
-                    'links': '🔗',
-                    'challenges': '😈'
+                    'links': '🤝',
+                    'challenges': '😈' 
                 }
 
                 # Get the emoji for the given special_type
@@ -337,10 +338,7 @@ async def boost_command(update, context):
 
 
 async def link_command(update, context):
-    await update.message.reply_text("🚧 Links werken nog niet 🧙‍♂️")
-    print("UNDER CONSTRUCTION")
-    return
-    # await check_use_of_special(update, context, 'links')
+    await check_use_of_special(update, context, 'links')
     # return
 
 

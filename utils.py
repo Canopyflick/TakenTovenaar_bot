@@ -57,7 +57,7 @@ async def reset_goal_status(context_or_application):
             engager_name = await get_first_name(context_or_application, user_id=engager_id)
             escaped_engager_name = escape_markdown_v2(engager_name)
             # Check if the engager has live boosts using fetch_live_engagements
-            live_engagements = await fetch_live_engagements(engager_id=engager_id)
+            live_engagements = await fetch_live_engagements(chat_id, engager_id=engager_id)
             if live_engagements:
                 if "⚡" in live_engagements:
                     # If there are live boosts, return them to the engager
@@ -67,7 +67,7 @@ async def reset_goal_status(context_or_application):
                     escaped_amount = escape_markdown_v2(amount_plus)
                     await bot.send_message(chat_id=chat_id, text =f"Boost van {escaped_engager_name} bleef gisteren {amount} maal onverzilverd 🧙‍♂️\n_{escaped_amount}⚡ terug naar [{escaped_engager_name}](tg://user?id={engager_id}_)"
                                    , parse_mode="MarkdownV2")
-                pending_engagements = await fetch_live_engagements('pending', engager_id=engager_id)
+                pending_engagements = await fetch_live_engagements(chat_id, 'pending', engager_id=engager_id)
                 if "😈" in pending_engagements:
                     amount = pending_engagements.count("😈")
                     await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'challenges', amount = amount)
@@ -76,8 +76,8 @@ async def reset_goal_status(context_or_application):
                     await bot.send_message(chat_id=chat_id, text =f"Challenge van {escaped_engager_name} werd gisteren {amount} maal niet geaccepteerd 🧙‍♂️\n_{escaped_amount}😈 terug naar [{escaped_engager_name}](tg://user?id={engager_id})_"
                                    , parse_mode="MarkdownV2")
                 
-                if "🔗" in live_engagements:
-                    amount = live_engagements.count("🔗")
+                if "🤝" in live_engagements:
+                    amount = live_engagements.count("🤝")
                     # different logic for links
                     await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️ Gevolgen moet ik nog implementeren 👀"
                                    , parse_mode="MarkdownV2")
@@ -205,7 +205,7 @@ async def check_use_of_special(update, context, special_type):
                 f"⚠️ _Je stuurt een open uitdaging, zonder tag en niet als antwoord op andermans berichtje.\nTrek je uitdaging in als dit niet de bedoeling was_ 🧙‍♂️", 
                 parse_mode = "Markdown"
                 )
-                await asyncio.sleep(3)
+                await asyncio.sleep(4)
                 # Schedule the deletion of the message as a background task
                 asyncio.create_task(delete_message(context, chat_id, warning_message.message_id))
             else:    
@@ -216,7 +216,6 @@ async def check_use_of_special(update, context, special_type):
             engaged = update.message.reply_to_message.from_user
             engaged_id = engaged.id
             engaged_name = engaged.first_name
-            print(f"Goed opletten nu, engaged is: {engaged}")
     
     if engaged_name == "TakenTovenaar_bot" or engaged_name == "TestTovenaar_bot":
         await update.message.reply_text(f"🚫 Y O U  SHALL  NOT  P A S S ! 🚫 🧙‍♂️\n_      a {special_type_singular} to me..._", parse_mode = "Markdown")
@@ -266,7 +265,7 @@ async def check_use_of_special(update, context, special_type):
             context.chat_data['engaged_id'] = None
         if challenged_id:
             context.chat_data['engaged_id'] = engaged_id
-            live_engagements = await fetch_live_engagements(engaged_id=engaged_id)
+            live_engagements = await fetch_live_engagements(chat_id, engaged_id=engaged_id)
             if live_engagements:
                 if "😈" in live_engagements:
                     await update.message.reply_text(f"🚫 {engaged_name} heeft vandaag al een andere uitdaging geaccepteerd 🧙‍♂️") #88
@@ -279,7 +278,7 @@ async def check_use_of_special(update, context, special_type):
     if await complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):    # < < < < < boosts and links go in here      
         emoji_mapping = {
             'boosts': '⚡',
-            'links': '🔗',
+            'links': '🤝',
             'challenges': '😈'
         }
 
@@ -288,8 +287,11 @@ async def check_use_of_special(update, context, special_type):
         await update.message.reply_text(f"{special_type_emoji}")
         escaped_engager_name = escape_markdown_v2(engager_name)
         escaped_engaged_name = escape_markdown_v2(engaged_name)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text =f"{escaped_engager_name} {special_type} [{escaped_engaged_name}](tg://user?id={engaged_id}) 🧙‍♂️"
+        await context.bot.send_message(chat_id=chat_id, text =f"{escaped_engager_name} {special_type} [{escaped_engaged_name}](tg://user?id={engaged_id}) 🧙‍♂️"
                                         , parse_mode="MarkdownV2")
+        if special_type == 'links':
+            await context.bot.send_message(chat_id=chat_id, text =f"_Beide winnen 2 bonuspunten als beide hun doel halen. Zo niet, dan verliest {escaped_engager_name} 1 punt_", parse_mode = "Markdown")
+            
         # await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
         print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
     else:
@@ -457,7 +459,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                     print(f"Error recording goal: {e}")
                 return
             else:
-                emojis = await fetch_live_engagements(engaged_id = user_id)
+                emojis = await fetch_live_engagements(chat_id, engaged_id = user_id)
                 if "😈" in emojis:
                     try:
                         cursor.execute('''
@@ -473,7 +475,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                         # record goal if challenge
                         await record_goal(user_id, chat_id, goal_text, engager_id, is_challenge=True)
                     except Exception as e:
-                        print(f"Error recording goal: {e}")
+                        print(f"Error recording goal: {e}")   
                 unescaped_emojis = emojis.replace('\\', '')
                 engaged_id = user_id
                 engaged_bonus_total, engager_bonuses = await calculate_bonuses(update, engaged_id, chat_id)
@@ -482,12 +484,34 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                 print(f"\nengager_bonuses = {engager_bonuses}")
                 engaged_name = update.effective_user.first_name
                 completion_message = f"Lekker bezig! ✅ \n_+{engaged_reward_total} (4+{engaged_bonus_total}{unescaped_emojis}) punten voor {engaged_name}_"
+                print(f"engager_bonuses: {engager_bonuses}, type: {type(engager_bonuses)}")
                 for engager_id, bonus in engager_bonuses.items():
                     engager_name = await get_first_name(context, engager_id)
                     if bonus >0:
                         completion_message += f"\n_+{bonus} voor {engager_name}_"  # Append each engager's name and bonus
                     
                 await update.message.reply_text(completion_message, parse_mode = "Markdown")
+                # Lastly, transition any pending links to live 
+                pending_emojis_1 = await fetch_live_engagements(chat_id, 'pending', engaged_id = user_id)
+                if "🤝" in pending_emojis_1:
+                    # update link status from pending to live
+                    cursor.execute('''
+                        UPDATE engagements
+                        SET status = 'live'
+                        WHERE engaged_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
+                    ''', (user_id, chat_id)) 
+                    conn.commit()
+                    print(f"🚨Now transitioning a link to live status because engaged finished their goal first")
+                pending_emojis_2 = await fetch_live_engagements(chat_id, 'pending', engager_id = user_id)
+                if "🤝" in pending_emojis_2:
+                    # update link status from pending to live
+                    cursor.execute('''
+                        UPDATE engagements
+                        SET status = 'live'
+                        WHERE engaged_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
+                    ''', (user_id, chat_id)) 
+                    conn.commit()
+                    print(f"🚨Now transitioning a link to live status because engager finished their goal first")
     except Exception as e:
         print(f"Error in goal_completion: {e}")
         conn.rollback()
@@ -499,7 +523,7 @@ async def record_goal(user_id, chat_id, goal_text, engager_id=None, is_challenge
     rephrased_goal = goal_text  # In case rephrasing fails, just use original goal_text
     try:
         messages=[
-            {"role": "system", "content": "Herformuleer uitdagingen naar het format: '... X.'"},
+            {"role": "system", "content": "Herformuleer prestaties naar compacte derde persoon enkelvoud, verleden tijd.'"},
             {"role": "user", "content": "Vandaag had jij voor 11 uur het huis opgeruimd."},
             {"role": "assistant", "content": "ruimde voor 11 uur het huis op."},
             {"role": "user", "content": "Je gaf Anne-Cathrine vandaag een massage."},
@@ -533,7 +557,7 @@ def get_bonus_for_special_type(special_type):
     if special_type == 'boosts':
         return 1, 1, "⚡"
     elif special_type == 'links':
-        return 2, 2, "🔗"
+        return 2, 2, "🤝"
     elif special_type == 'challenges':
         return 0, 2, "😈"
     return 0, 0, ""    
@@ -602,6 +626,7 @@ async def calculate_bonuses(update, engaged_id, chat_id):
         print(f"Error processing engagement completion: {e}")
         await update.message.reply_text("Uhhh... 🧙‍♂️\n\n🐛")
         conn.rollback()
+        return 0
 
 
 
@@ -748,6 +773,8 @@ async def roll_dice(update, context):
 
 
 async def complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type, status='live'):
+    if special_type == "links":
+        status = "pending"
     try:
         user_id = engager_id
         cursor.execute('''
@@ -794,8 +821,8 @@ async def show_inventory(update, context):
             # Define a dictionary to map items to their corresponding emojis
             emoji_mapping = {
                 "boosts": "⚡",
-                "links": "🔗",
-                "challenges": "😈"
+                "challenges": "😈",
+                "links": "🤝"
             }
             inventory_text = "\n".join(
                 f"{emoji_mapping.get(item, '')} {item}: {count}"
@@ -1020,7 +1047,7 @@ def finished_goal_today(user_id, chat_id):
 
 
 # Currently handles EITHER engager OR engaged        
-async def fetch_live_engagements(status = 'live', engager_id = None, engaged_id = None):
+async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, engaged_id = None):
     try:
         results = []
         if engager_id:
@@ -1028,9 +1055,9 @@ async def fetch_live_engagements(status = 'live', engager_id = None, engaged_id 
             cursor.execute('''
                 SELECT special_type, COUNT(*)
                 FROM engagements
-                WHERE engager_id = %s AND status = %s
+                WHERE engager_id = %s AND status = %s AND chat_id = %s
                 GROUP BY special_type;
-            ''', (engager_id, status))
+            ''', (engager_id, status, chat_id))
 
             # Fetch all results
             results.extend(cursor.fetchall())
@@ -1039,9 +1066,9 @@ async def fetch_live_engagements(status = 'live', engager_id = None, engaged_id 
             cursor.execute('''
                 SELECT special_type, COUNT(*)
                 FROM engagements
-                WHERE engaged_id = %s AND status = %s
+                WHERE engaged_id = %s AND status = %s AND chat_id = %s
                 GROUP BY special_type;
-            ''', (engaged_id, status))
+            ''', (engaged_id, status, chat_id))
 
             # Fetch all results
             results.extend(cursor.fetchall())
@@ -1062,13 +1089,13 @@ async def fetch_live_engagements(status = 'live', engager_id = None, engaged_id 
                 challenge_count = count
         
         # Build the final string of emojis
-        engagement_string = '⚡' * boost_count + '🔗' * link_count + '😈' * challenge_count
+        engagement_string = '⚡' * boost_count + '🤝' * link_count + '😈' * challenge_count
 
         # Add parentheses around the emoji string
         if engagement_string:
             engagement_string = f"({engagement_string})"
         else:
-            return False
+            return ''
 
         escaped_string = escape_markdown_v2(engagement_string)
 
@@ -1077,7 +1104,7 @@ async def fetch_live_engagements(status = 'live', engager_id = None, engaged_id 
 
     except Exception as e:
         print(f"Error fetching engagements: {e}")
-        return False
+        return ''
         
     
     
