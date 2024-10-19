@@ -1,7 +1,7 @@
 ﻿import os
 import psycopg2
 from telegram import Bot, ChatMember
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, CallbackQueryHandler
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, CallbackQueryHandler, PollAnswerHandler, PollHandler
 from openai import OpenAI
 import asyncio
 from datetime import datetime, time, timedelta
@@ -156,7 +156,9 @@ try:
     );
     ''')
     conn.commit()
-    
+
+
+
 except Exception as e:
     print(f"Error updating database schema: {e}")
     conn.rollback()
@@ -203,7 +205,7 @@ async def get_first_name(context_or_application, user_id=None, username=None):
         return user.first_name  # Return the first name of the user
     except Exception as e:
         print(f"Error fetching user details for user_id {user_id}: {e}")
-        return None
+        return "Lodewijk"
 
 
 # Security check: am I in the chat where the bot is used?
@@ -234,18 +236,27 @@ async def notify_ben(update,context):
         
 async def print_edit(update, context):
     print("Someone edited a message")
-    
+
 
 
 # Setup function 
 async def setup(application):
     try:
-        from utils import reset_goal_status  # Import inside the function
-        # Schedule the reset job using job_queue
+        from utils import reset_goal_status, create_weekly_goals_poll
+        # Schedule the daily reset job 
         job_queue = application.job_queue
         reset_time = time(hour=2, minute=0, second=0)
         job_queue.run_daily(reset_goal_status, time=reset_time)
-        print(f"\nJob queue set up successfully at {reset_time}")
+        print(f"\nDaily reset job queue set up successfully at {reset_time}")
+
+        # Schedule the weekly poll job 
+        poll_time = time(hour=7, minute=0)  # 7 AM
+        job_queue.run_daily(
+            create_weekly_goals_poll, 
+            time=poll_time, 
+            days=(6,),  # Sunday
+        )
+        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Sunday")
 
         from utils import get_last_reset_time
         # Check if reset is needed on startup
@@ -336,10 +347,13 @@ def main():
         # Complexer engagements
         application.add_handler(CommandHandler(["link", "links", "linken"], link_command))
         
+        # Weekly polls
+        from utils import analyze_message, receive_poll
+        application.add_handler(PollHandler(receive_poll))
 
         
         
-        from utils import analyze_message
+        
         # Bind the message analysis to any non-command text messages
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
         # Handler for edited messages
