@@ -1,9 +1,8 @@
-﻿from TelegramBot_Takentovenaar import client, notify_ben, conn, cursor, get_first_name, global_bot, is_ben_in_chat, notify_ben
-from datetime import datetime, timedelta
+﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection
+from datetime import datetime
 import json, asyncio, re, random
-from pydantic import BaseModel
 
-from telegram import Update, PollAnswer
+from telegram import Update
 from telegram.ext import CallbackContext, ContextTypes
 
 
@@ -29,32 +28,33 @@ async def analyze_message(update, context):
         return
 
 # nightly or catch-up reset        
-async def reset_goal_status(context_or_application):
-    # for the bot being able to send messages
-    bot = context_or_application.bot if hasattr(context_or_application, 'bot') else context_or_application # Because application is passed from catchup, and context from job queue
-    try:
-        # Fetch all unique chat IDs from the users table
-        cursor.execute("SELECT DISTINCT chat_id FROM users")
-        chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
+async def reset_goal_status(bot, chat_id):
 
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         # Reset goal status for all users
-        cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = ''")
+        cursor.execute(
+            "UPDATE users SET today_goal_status = 'not set', today_goal_text = '' WHERE chat_id = %s",
+            (chat_id,)
+        )
         conn.commit()
         print("Goal status reset at      :", datetime.now())
 
         
         # Fetch all engager_ids for live boost engagements (⚡)
         cursor.execute('''
-            SELECT DISTINCT engager_id, chat_id
+            SELECT DISTINCT engager_id
             FROM engagements
-            WHERE status = 'live'
-        ''')
+            WHERE status = 'live' AND chat_id = %s
+        ''', (chat_id,))
         live_engagers = cursor.fetchall()
 
         # Iterate over each live boost engagement
         # Process each engager for each type separately
-        for engager_id, chat_id in live_engagers:
-            engager_name = await get_first_name(context_or_application, user_id=engager_id)
+        for engager_id_tuple in live_engagers:
+            engager_id = engager_id_tuple[0]
+            engager_name = await get_first_name(bot, user_id=engager_id)
             escaped_engager_name = escape_markdown_v2(engager_name)
             # Check if the engager has live boosts using fetch_live_engagements
             live_engagements = await fetch_live_engagements(chat_id, engager_id=engager_id)
@@ -75,48 +75,62 @@ async def reset_goal_status(context_or_application):
                     escaped_amount = escape_markdown_v2(amount_plus)
                     await bot.send_message(chat_id=chat_id, text =f"Challenge van {escaped_engager_name} werd gisteren {amount} maal niet geaccepteerd 🧙‍♂️\n_{escaped_amount}😈 terug naar [{escaped_engager_name}](tg://user?id={engager_id})_"
                                    , parse_mode="MarkdownV2")
-                
-                if "🤝" in live_engagements:
+                amount = 0
+                if "🤝" in live_engagements or "🤝" in pending_engagements: 
                     amount = live_engagements.count("🤝")
+                    amount += pending_engagements.count("🤝")
                     # different logic for links
-                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️ Gevolgen moet ik nog implementeren 👀"
+                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_-{amount} punten_"
                                    , parse_mode="MarkdownV2")
-                    print("! ! ! live links upon nightly reset\n\nnot yet implemented ! ! !")
+                    try:
+                        cursor.execute('''
+                            UPDATE users
+                            SET score = score - %s
+                            WHERE user_id = %s AND chat_id = %s           
+                        ''', (amount, engager_id, chat_id))
+                        conn.commit()
+                    except Exception as e:
+                        print(f"Error subtracting points for pending and live links for {chat_id}: {e}")
+                        conn.rollback()
+                    print("! ! ! live links upon nightly reset\n\nwerken ze ?!???!")
                 
     except Exception as e:
-        print(f"Error resetting goal status: {e}")
-        conn.rollback()
-        
+        print(f"Error resetting goal for {chat_id} status: {e}")
+        conn.rollback()   
     try:
         cursor.execute('''
             UPDATE engagements
             SET status = 'archived_unresolved'
-            WHERE status = 'live'           
-        ''')
+            WHERE status IN ('live', 'pending') AND chat_id = %s           
+        ''', (chat_id))
         conn.commit()
     except Exception as e:
-        print(f"Error archiving engagements: {e}")
+        print(f"Error archiving engagements for {chat_id}: {e}")
         conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()    
         
     # Update the last reset time
     update_last_reset_time()
 
-    # Send reset message to all active chats
-        
-    for chat_id in chat_ids:
-        morning_emojis = ["🌅", "🌄"]
-        random_morning_emoji = random.choice(morning_emojis)
-        if random.random() < 0.03:
-                random_morning_emoji = "🧙‍♂️"
-        if random.random() < 0.03:
-            random_morning_emoji = "🍆" 
-        await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
-        await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
-        await bot.send_message(chat_id=chat_id, text=f"✨_{get_random_philosophical_message()}_✨", parse_mode = "Markdown")
-        await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
+    # Send reset message
+    morning_emojis = ["🌅", "🌄"]
+    random_morning_emoji = random.choice(morning_emojis)
+    if random.random() < 0.03:
+            random_morning_emoji = "🧙‍♂️"
+    if random.random() < 0.03:
+        random_morning_emoji = "🍆" 
+    await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
+    await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
+    await bot.send_message(chat_id=chat_id, text=f"✨_{get_random_philosophical_message()}_✨", parse_mode = "Markdown")
+    await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
+
 
 def update_last_reset_time():
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         current_time = datetime.now()
         cursor.execute("UPDATE bot_status SET last_reset_time = %s", (current_time,))
         conn.commit()
@@ -124,11 +138,15 @@ def update_last_reset_time():
     except Exception as e:
         print(f"Error updating last reset time: {e}")
         conn.rollback()
-
+    finally:
+        cursor.close()
+        conn.close() 
 
         
 def get_last_reset_time():
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT last_reset_time FROM bot_status")
         result = cursor.fetchone()
         if result is None:
@@ -142,7 +160,9 @@ def get_last_reset_time():
     except Exception as e:
         print(f"Error getting last reset time: {e}")
         return None
-    
+    finally:
+        cursor.close()
+        conn.close() 
 
 async def check_use_of_special(update, context, special_type):
     special_type_singular = special_type.rstrip('s')
@@ -240,6 +260,8 @@ async def check_use_of_special(update, context, special_type):
     
     # Check if the engaged already has a goal set today, not done
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (engaged_id, chat_id))
         result = cursor.fetchone()
         if result is not None:
@@ -254,7 +276,10 @@ async def check_use_of_special(update, context, special_type):
                 return False
     except Exception as e:
         print(f"Error selecting goal: {e}")
-
+    finally:
+        cursor.close()
+        conn.close() 
+        
     print(f"check_use_of_special ...\n>>PASSED>>\n")
     if special_type == 'challenges':
         # Storing all the variables for challenge_command_2
@@ -305,7 +330,9 @@ async def delete_message(context, chat_id, message_id, delay=8):
     
     
 async def check_special_balance(engager_id, chat_id, special_type):
-    try:    
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('SELECT inventory FROM users WHERE user_id = %s AND chat_id = %s', (engager_id, chat_id))
         result = cursor.fetchone()
         if result:
@@ -322,11 +349,15 @@ async def check_special_balance(engager_id, chat_id, special_type):
     except Exception as e:
         print(f'Error checking sufficient inventory: {e}')
         return
-    
+    finally:
+        cursor.close()
+        conn.close() 
 
 # Check if the engager already has a live or pending engage with the same user with the same special type
 async def check_identical_engagement(engager_id, engaged_id, special_type, chat_id): 
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('''
             SELECT * FROM engagements 
             WHERE engager_id = %s 
@@ -345,7 +376,9 @@ async def check_identical_engagement(engager_id, engaged_id, special_type, chat_
     except Exception as e:
         print(f'Error checking identical engagement: {e}')
         return     
-
+    finally:
+        cursor.close()
+        conn.close() 
 
 # Assistant_response == 'Doelstelling'          
 async def handle_goal_setting(update, user_id, chat_id):
@@ -374,6 +407,8 @@ async def handle_goal_setting(update, user_id, chat_id):
         update_user_goal(user_id, chat_id, goal_text)
         # Change goal status and total
         try:
+            conn = get_database_connection()
+            cursor = conn.cursor()
             set_time = datetime.now()
             cursor.execute('''
                            UPDATE users 
@@ -389,7 +424,10 @@ async def handle_goal_setting(update, user_id, chat_id):
             print(f"Error updating today_goal_status: {e}")
             conn.rollback()
             return
-        
+        finally:
+            cursor.close()
+            conn.close() 
+            
         # Send confirmation message
         if update.message.text.endswith(';)'):
             await update.message.reply_text('🥰 Succes schatje! 😚 \n_+1 punt_', parse_mode="Markdown")
@@ -422,6 +460,8 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
     # Rephrase the goal in past tense
     user_message = update.message.text
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         assistant_response = await check_goal_compatibility(update, goal_text, user_message)
         if assistant_response == 'Nee':
             await handle_unclassified_mention(update)
@@ -440,6 +480,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
 
             completion_time = datetime.now().strftime("%H:%M")
             # Update user's goal status and statistics
+
             cursor.execute('''
                 UPDATE users 
                 SET today_goal_status = %s, 
@@ -476,15 +517,14 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                         await record_goal(user_id, chat_id, goal_text, engager_id, is_challenge=True)
                     except Exception as e:
                         print(f"Error recording goal: {e}")   
-                unescaped_emojis = emojis.replace('\\', '')
+                unescaped_emojis = emojis.replace('\\(', '').replace('\\)', '')
                 engaged_id = user_id
                 engaged_bonus_total, engager_bonuses = await calculate_bonuses(update, engaged_id, chat_id)
                 engaged_reward_total = engaged_bonus_total + 4
                 print(f"\nengaged_reward_total = engaged_bonus_total + 4 | {engaged_reward_total} = {engaged_bonus_total} +4")
                 print(f"\nengager_bonuses = {engager_bonuses}")
                 engaged_name = update.effective_user.first_name
-                completion_message = f"Lekker bezig! ✅ \n_+{engaged_reward_total} (4+{engaged_bonus_total}{unescaped_emojis}) punten voor {engaged_name}_"
-                print(f"engager_bonuses: {engager_bonuses}, type: {type(engager_bonuses)}")
+                completion_message = f"Lekker bezig! ✅ \n_+{engaged_reward_total} (4 + {engaged_bonus_total}{unescaped_emojis}) punten voor {engaged_name}_"
                 for engager_id, bonus in engager_bonuses.items():
                     engager_name = await get_first_name(context, engager_id)
                     if bonus >0:
@@ -508,7 +548,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                     cursor.execute('''
                         UPDATE engagements
                         SET status = 'live'
-                        WHERE engaged_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
+                        WHERE engager_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
                     ''', (user_id, chat_id)) 
                     conn.commit()
                     print(f"🚨Now transitioning a link to live status because engager finished their goal first")
@@ -516,11 +556,15 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
         print(f"Error in goal_completion: {e}")
         conn.rollback()
         return
-
+    finally:
+        cursor.close()
+        conn.close() 
 
 async def record_goal(user_id, chat_id, goal_text, engager_id=None, is_challenge=False):
     # Rephrase the goal for recording
     rephrased_goal = goal_text  # In case rephrasing fails, just use original goal_text
+    conn = get_database_connection()
+    cursor = conn.cursor()
     try:
         messages=[
             {"role": "system", "content": "Herformuleer prestaties naar compacte derde persoon enkelvoud, verleden tijd.'"},
@@ -531,7 +575,7 @@ async def record_goal(user_id, chat_id, goal_text, engager_id=None, is_challenge
             {"role": "user", "content": goal_text}
         ] 
         rephrased_goal = await send_openai_request(messages, temperature=0.1)  # Extract the rephrased goal from OpenAI response
-        print(f"*Rephrased goald for recording prompt: \n\n{messages}\n\nRephrased goal: {rephrased_goal}\n\n")
+        print(f"*Rephrased goal for recording prompt: \n\n{messages}\n\nRephrased goal: {rephrased_goal}\n\n")
     except Exception as e:
         print(f"Error rephrasing goal_text for recording: {e}")
         
@@ -549,6 +593,8 @@ async def record_goal(user_id, chat_id, goal_text, engager_id=None, is_challenge
         engager_id
     ))
     conn.commit()
+    cursor.close()
+    conn.close() 
     print(f"\n📚 DOEL OPGESLAGEN VOOR HET NAGESLACHT\n")
     
 
@@ -565,15 +611,16 @@ def get_bonus_for_special_type(special_type):
 # Calculate and award the bonuses for both the engager and the engaged upon goal completion of the engaged
 async def calculate_bonuses(update, engaged_id, chat_id):
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         # Fetch all engagers for the engaged user and the specific special_type
         cursor.execute('''
             SELECT engager_id, engaged_id, special_type
             FROM engagements
             WHERE engaged_id = %s AND chat_id = %s AND status = 'live'
         ''', (engaged_id, chat_id))
-    
         engagements = cursor.fetchall()
-
+        print(f"🤝😈⚡Engaged ID: {engaged_id}, Chat ID: {chat_id}, Engagements: {engagements}")
         # Track only the bonus reward for the engaged user (regular 4p. reward was already added separately)
         engaged_bonus_total = 0     # 
         # Dictionary to track bonuses for each engager (engager_id: total_bonus)
@@ -627,7 +674,9 @@ async def calculate_bonuses(update, engaged_id, chat_id):
         await update.message.reply_text("Uhhh... 🧙‍♂️\n\n🐛")
         conn.rollback()
         return 0
-
+    finally:
+        cursor.close()
+        conn.close() 
 
 
     
@@ -637,6 +686,8 @@ async def calculate_bonuses(update, engaged_id, chat_id):
 async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, engager_id, engager_bonus):
     engager_bonus = engager_bonus or 0
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         # archive engagement status
         cursor.execute('''
         UPDATE engagements 
@@ -661,7 +712,9 @@ async def resolve_engagement(chat_id, engagement_id, special_type, engaged_id, e
         print(f"Error in archiving/awarding (resolve_engagement): {e}")
         conn.rollback()
         raise
-
+    finally:
+        cursor.close()
+        conn.close() 
     
 def check_live_engagement(cursor, user_id, chat_id, special_type=None):
     # Base query
@@ -705,6 +758,8 @@ async def roll_dice(update, context):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         score = fetch_score(update)
         if score > 1:
             # Send the dice and capture the message object
@@ -718,7 +773,7 @@ async def roll_dice(update, context):
             # Check the outcome of the dice roll
             rolled_value = dice_message.dice.value
             await asyncio.sleep(4)
-    
+            
             # Give a reply based on the rolled value
             if rolled_value == user_guess:
                 try:
@@ -731,7 +786,7 @@ async def roll_dice(update, context):
                     conn.commit()
                 except Exception as e:
                     print(f"Error adding 5 to score in database: {e}")
-                    conn.rollback()
+                    conn.rollback()   
                 await context.bot.send_message(
                 chat_id=update.message.chat_id, 
                 text=f"🎉",
@@ -769,13 +824,17 @@ async def roll_dice(update, context):
 
     except Exception as e:
         print (f"Error: {e}")     
-
+    finally:
+        cursor.close()
+        conn.close() 
 
 
 async def complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type, status='live'):
     if special_type == "links":
         status = "pending"
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         user_id = engager_id
         cursor.execute('''
             INSERT INTO engagements 
@@ -807,6 +866,9 @@ async def complete_new_engagement(update, engager_id, engaged_id, chat_id, speci
         print(f"Error completing engagement: {e}")
         conn.rollback()
         return False
+    finally: 
+        cursor.close()
+        conn.close()
     
 
 async def show_inventory(update, context):
@@ -835,6 +897,8 @@ async def show_inventory(update, context):
 
 def get_inventory(user_id, chat_id):
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute("SELECT inventory FROM users WHERE user_id = %s AND chat_id = %s", (user_id, chat_id))
         result = cursor.fetchone()
         if result is None:
@@ -843,12 +907,16 @@ def get_inventory(user_id, chat_id):
             return result[0]
     except Exception as e:
         print(f"Error getting inventory: {e}")
+    finally:
+        cursor.close()
+        conn.close() 
 
         
 # Function to check if the engager has sufficient inventory to engage
 async def check_special_inventory(update, context, engager_id, chat_id, special_type):
     engager_name = update.effective_user.first_name
-    
+    conn = get_database_connection()
+    cursor = conn.cursor()
     # Check if the engager has sufficient inventory to engage 
     cursor.execute('SELECT inventory FROM users WHERE user_id = %s AND chat_id = %s', (engager_id, chat_id))
     result = cursor.fetchone()
@@ -867,12 +935,15 @@ async def check_special_inventory(update, context, engager_id, chat_id, special_
     if special_count < 1:
         await update.message.reply_text(f"🚫 {engager_name}, je hebt geen {special_type} meer! 🧙‍♂️\n_Zie (/inventory)_", parse_mode="Markdown")
         return False  # Stop further execution if the engager has fewer than 1 of the special_type
-
+    cursor.close()
+    conn.close() 
     return True  # The engager has sufficient inventory
 
 
 async def add_special(user_id, chat_id, special_type, amount=1):
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         # Dynamically construct the JSON path string
         path = '{' + special_type + '}'
     
@@ -895,13 +966,17 @@ async def add_special(user_id, chat_id, special_type, amount=1):
     except Exception as e:
         print(f"Error add_special: {e}")
         return
-
+    finally:
+        cursor.close()
+        conn.close() 
 
 
 def fetch_goal_text(update):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('SELECT today_goal_text FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
         result = cursor.fetchone()
         if result:
@@ -918,12 +993,18 @@ def fetch_goal_text(update):
     except Exception as e:
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
-    
+    finally:
+        cursor.close()
+        conn.close() 
+
+
 async def fetch_goal_status(update, user_id = None):
     if user_id is None:
         user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
         result = cursor.fetchone()
         simplified_goal_status = None
@@ -945,11 +1026,17 @@ async def fetch_goal_status(update, user_id = None):
     except Exception as e:
         print(f"Error fetching goal data: {e}")
         return ''  # Return empty string if an error occurs
-    
+    finally:
+        cursor.close()
+        conn.close() 
+
+
 def fetch_score(update):
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('SELECT score FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
         result = cursor.fetchone()
         if result is not None:
@@ -959,7 +1046,9 @@ def fetch_score(update):
     except Exception as e:
         print(f"Error fetching score: {e}")
         return 0  # Return a default value in case of error
-
+    finally:
+        cursor.close()
+        conn.close() 
 
 def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
     # Define system messages based on the message_type
@@ -1014,7 +1103,9 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
 
 # Function to update user goal text to present or past tense in the database when Doelstelling or Klaar 
 def update_user_goal(user_id, chat_id, goal_text):
-    try:  
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('''
         INSERT INTO users (user_id, chat_id, today_goal_text)
         VALUES (%s, %s, %s)
@@ -1025,30 +1116,46 @@ def update_user_goal(user_id, chat_id, goal_text):
     except Exception as e:
         print(f"Error in update_user_goal: {e}")
         conn.rollback()
-    
+    finally:
+        cursor.close()
+        conn.close() 
+
+
 # Function to check if user has set a goal today
 def has_goal_today(user_id, chat_id):
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
         result = cursor.fetchone()
         return result and result[0] == 'set'
     except Exception as e:
         print(f"Error has_goal_today: {e}")
+    finally:
+        cursor.close()
+        conn.close() 
+
 
 # Function to check if user has finished a goal today
 def finished_goal_today(user_id, chat_id):
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('SELECT today_goal_status FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
         result = cursor.fetchone()
         return result and result[0].startswith("Done")
     except Exception as e:
         print(f"Error finished_goal_today: {e}")
-
+    finally:
+        cursor.close()
+        conn.close() 
 
 
 # Currently handles EITHER engager OR engaged        
 async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, engaged_id = None):
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         results = []
         if engager_id:
             # Query to get live engagements for the user, grouped by special_type
@@ -1081,6 +1188,7 @@ async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, en
         # Map the special types to their respective counts
         for row in results:
             special_type, count = row
+            print(f"🤝😈⚡In fetch_live_engagements, fetching: {special_type}")
             if special_type == 'boosts':
                 boost_count = count
             elif special_type == 'links':
@@ -1105,7 +1213,9 @@ async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, en
     except Exception as e:
         print(f"Error fetching engagements: {e}")
         return ''
-        
+    finally:
+        cursor.close()
+        conn.close()     
     
     
 # Randomly pick a message
@@ -1302,7 +1412,7 @@ async def handle_regular_message(update, context):
             await context.bot.setMessageReaction(chat_id=chat_id, message_id=message_id, reaction=reaction)
     except Exception as e:
         print(f"Error reacting to message: {e}")
-    if len(user_message) > 11 and random.random() < 0.02:
+    if len(user_message) > 11 and random.random() < 0.015:
         messages = prepare_openai_messages(update, user_message, 'sleepy')
         assistant_response = await send_openai_request(messages, "gpt-4o")
         await update.message.reply_text(assistant_response)
@@ -1344,6 +1454,8 @@ async def handle_regular_message(update, context):
             chat_id = update.effective_chat.id
             # Reset goal status
             try:
+                conn = get_database_connection()
+                cursor = conn.cursor()
                 cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = '' WHERE chat_id = %s", (chat_id))
                 # Delete all engagements
                 cursor.execute('DELETE FROM engagements WHERE chat_id = %s', (chat_id))
@@ -1354,6 +1466,10 @@ async def handle_regular_message(update, context):
             except Exception as e:
                 conn.rollback()  # Rollback the transaction on error
                 print(f"Error: {e}")
+            finally:
+                cursor.close()
+                conn.close()
+                
 
     elif user_message == '777':
         chat_type = update.effective_chat.type
@@ -1373,14 +1489,23 @@ async def handle_regular_message(update, context):
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
             try:
+                from handlers.weekly_poll import create_weekly_goals_poll
                 await create_weekly_goals_poll(context, chat_id)
             except Exception as e:
                 print(f"Error running 888-poll: {e}")
-
+                
+    # currently works only WHERE chat_id = -4591388020;
     elif user_message == 'voegneppedoelentoe':
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
             try:
+                conn = get_database_connection()
+                cursor = conn.cursor()
+                # Delete existing entries
+                cursor.execute('''
+                    DELETE FROM goal_history
+                    WHERE chat_id = -4591388020;
+                ''')
                 cursor.execute('''
                     INSERT INTO goal_history (user_id, chat_id, goal_text, completion_time, goal_type, challenge_from)
                     SELECT 
@@ -1401,86 +1526,80 @@ async def handle_regular_message(update, context):
                         END as challenge_from
                     FROM (
                     VALUES 
-                        ('won een wedstrijd in slaapzakracen.'),
-                        ('slaagde erin om koffie te zetten zonder eerst te knoeien.'),
-                        ('bedacht een heel nieuwe taal tijdens een douchebeurt.'),
-                        ('gaf een TED-talk aan mijn kat.'),
-                        ('vond de verloren afstandsbediening na drie jaar.'),
-                        ('liet de stofzuiger zelfstandig de woonkamer schoonmaken.'),
-                        ('deed alsof ik mijn huisplant motiveerde met een peptalk.'),
-                        ('versloeg een groep eekhoorns in een potje schaak.'),
-                        ('bracht de vuilnis weg zonder mentaal voorbereid te zijn.'),
-                        ('haalde pizza van de grond in één stuk tijdens een val.'),
-                        ('kreeg een vreemdeling zover mij op straat te highfiven.'),
-                        ('ontdekte het geheim van de perfecte tosti door toeval.'),
-                        ('maakte vrienden met een robotstofzuiger.'),
-                        ('overtuigde een kat om vrijwillig in bad te gaan.'),
-                        ('at een hele pot pindakaas leeg tijdens een Zoom-vergadering.'),
-                        ('leerde mijn cactus pianospelen.'),
-                        ('won een staarwedstrijd van een uil in de dierentuin.'),
-                        ('hield een volledig gesprek met mijn spiegelbeeld.'),
-                        ('deed alsof ik een talkshowhost was tijdens het afwassen.'),
-                        ('ontdekte een nieuw sterrenbeeld door willekeurige stippen te verbinden.'),
-                        ('deelde een filosofisch moment met een duif.'),
-                        ('veranderde mijn schoenen zonder op mijn handen te kijken.'),
-                        ('besloot de keuken te vegen met een ritmische dansbeweging.'),
-                        ('leerde mijn hond poker (hij blufft verrassend goed).'),
-                        ('ontving een staande ovatie van mijn kussens na een dutje.'),
-                        ('ben erin geslaagd een kaasschaaf als kunstwerk te beschouwen.'),
-                        ('repareerde mijn telefoon door hem liefdevol aan te kijken.'),
-                        ('sprak de hele dag alleen in rijm.'),
-                        ('verstopte mini-pompoennetjes door het hele kantoor.'),
-                        ('organiseerde een formeel galadiner voor mijn hamster.'),
-                        ('sliep een hele nacht zonder het dekbed te stelen van mijn partner.'),
-                        ('leerde mijn goudvis trucjes.'),
-                        ('deed alle huishoudelijke taken op rollerskates.'),
-                        ('hield een TEDtalk voor mijn planten.'),
-                        ('gebruikte alleen emojis om te communiceren op werk.'),
-                        ('trainde voor een marathon door Netflix-series te bingen.'),
-                        ('maakte een documentaire over het leven van mijn stofzuigerrobot.'),
-                        ('schreef een liefdesbrief aan een pizzabezorger.'),
-                        ('hield een professionele fotoshoot met mijn sokken.'),
-                        ('overleefde een hele dag zonder koffie te morsen.'),
-                        ('deed alle meetings vandaag ondersteboven hangend.'),
-                        ('vertelde mijn buurman dat zijn kat mijn belastingaangifte heeft gedaan.'),
-                        ('won een debat met mezelf in de spiegel.'),
-                        ('maakte een Instagram account voor mijn plant.'),
-                        ('organiseerde een verrassingsfeest voor mijn schaduw.'),
-                        ('ging naar de supermarkt verkleed als een avocado.'),
-                        ('gaf een powerpoint presentatie aan mijn rubber eendjes.'),
-                        ('deed alsof ik een geheim agent was tijdens het boodschappen doen.'),
-                        ('sprak een hele dag met een Brits accent.'),
-                        ('leerde mijn computer handstand maken.'),
-                        ('deed een interpretative dans voor mijn wasmachine.'),
-                        ('hield een ted talk over waarom sokken altijd kwijtraken.'),
-                        ('organiseerde een date tussen mijn printer en mijn laptop.'),
-                        ('deed een hele vergadering met een filter van een aardappel.'),
-                        ('schreef een gedicht over mijn WiFi-router.'),
-                        ('verloor een gevecht tegen een stuk plakband.'),
-                        ('verzon een complottheorie over waarom duiven niet echt zijn.'),
-                        ('hield een talentenjacht voor de buurtkatten.'),
-                        ('gooide een perfecte driepunter met een vuile sok in de wasmand.'),
-                        ('liet per ongeluk een lepel in de magnetron en het resultaat leek op modern kunst.'),
-                        ('verspreidde per ongeluk confetti bij het openen van een envelop.'),
-                        ('versloeg een overijverige zwerver in een potje armpje drukken.'),
-                        ('ontdekte een geheimzinnig deurtje in mijn keukenkastje.'),
-                        ('zag per ongeluk een UFO tijdens het aanstaren van de lucht.'),
-                        ('verzon een nieuwe sport: extreme bankhangen.'),
-                        ('versloeg mijn eigen record in "zo lang mogelijk zonder te knipperen".'),
-                        ('gaf een post-it een pep talk voor zijn belangrijke rol op de koelkast.'),
-                        ('vond eindelijk het sokkenmonster en sloot vrede.'),
-                        ('ving een sneeuwvlok met mijn tong voordat die smolt.'),
-                        ('kocht een cactus en gaf hem per ongeluk een naam.'),
-                        ('organiseerde een kussengevecht met mezelf... en verloor.'),
-                        ('slaagde erin om de magnetron te programmeren voor een compleet gekke tijd.')
+                        -- 30 saaie prestaties
+                        ('ging naar het werk zonder koffie te drinken.'),
+                        ('schoot geen boodschappenwagen weg tijdens het winkelen.'),
+                        ('maakte de bedden op zonder er later in te springen.'),
+                        ('beantwoordde een e-mail binnen 24 uur.'),
+                        ('las een heel boek zonder de bladwijzer kwijt te raken.'),
+                        ('maakte ontbijt en lunch zonder iets te verbranden.'),
+                        ('maakte een to-do lijst en volgde die op.'),
+                        ('klikte een hele dag geen advertenties aan.'),
+                        ('dronk 8 glazen water vandaag.'),
+                        ('liep naar de brievenbus en terug zonder afgeleid te worden.'),
+                        ('zat een vergadering uit zonder op mijn telefoon te kijken.'),
+                        ('nam de trap in plaats van de lift.'),
+                        ('parkeerde perfect tussen de lijnen op de parkeerplaats.'),
+                        ('maakte mijn bed op voordat ik de deur uitging.'),
+                        ('vergeet geen verjaardag deze week.'),
+                        ('at drie maaltijden op tijd vandaag.'),
+                        ('ging slapen vóór middernacht.'),
+                        ('opende geen nieuwe tabbladen tijdens het werken.'),
+                        ('ging een dag zonder sociale media.'),
+                        ('schoof mijn stoel netjes onder het bureau na het eten.'),
+                        ('waste de vaat meteen af na het eten.'),
+                        ('ruimde meteen de boodschappen op na thuiskomst.'),
+                        ('begon met een project zonder het uit te stellen.'),
+                        ('was mijn handen vóór het eten.'),
+                        ('wandelde 10 minuten buiten zonder op mijn telefoon te kijken.'),
+                        ('borg mijn was netjes op dezelfde dag dat ik het waste.'),
+                        ('gebruikte geen snooze-knop bij het opstaan.'),
+                        ('waste mijn handen na elke badkamerbezoek.'),
+                        ('deed het licht meteen uit toen ik de kamer verliet.'),
+                        ('borg mijn schoenen op in de kast in plaats van bij de deur.'),
+                        -- 10 indrukwekkende prestaties
+                        ('liep een marathon zonder te stoppen.'),
+                        ('won een nationale quizcompetitie.'),
+                        ('klom de hoogste berg van Europa.'),
+                        ('voltooide een doctoraat in kwantumfysica.'),
+                        ('ontdekte een nieuwe diersoort in het Amazonewoud.'),
+                        ('sloeg een homerun in een professionele honkbalwedstrijd.'),
+                        ('ontwierp een gebouw dat een architectuurprijs won.'),
+                        ('schreef een bestseller in één jaar.'),
+                        ('leerde vloeiend 5 talen spreken in 3 jaar.'),
+                        ('gaf een presentatie voor een publiek van 10.000 mensen.'),
+                        -- 10 inspirerende prestaties
+                        ('bekeek elke dag het positieve in elke situatie.'),
+                        ('hielp een onbekende zonder iets terug te verwachten.'),
+                        ('stopte met roken na 20 jaar verslaving.'),
+                        ('leerde weer lopen na een ernstig ongeluk.'),
+                        ('voltooide een ultramarathon voor het goede doel.'),
+                        ('deed dagelijks vrijwilligerswerk om daklozen te helpen.'),
+                        ('begon een mentorprogramma voor kansarme jongeren.'),
+                        ('verlegde persoonlijke grenzen en overwon angst voor spreken in het openbaar.'),
+                        ('herstel van een burn-out en vond balans in het leven.'),
+                        ('ondersteunde een vriend door een moeilijke tijd en maakte een verschil.'),
+                        -- 10 grappige prestaties
+                        ('slaagde erin om een sandwich te maken zonder de kaas om te laten vallen.'),
+                        ('verloor een wedstrijd tegen mijn eigen schaduw.'),
+                        ('ving mijn telefoon drie keer op rij voordat die de grond raakte.'),
+                        ('ontsnapte uit een kamer door het raam, terwijl de deur open was.'),
+                        ('probeerde de hond uit te laten maar werd zelf uitgelaten.'),
+                        ('stak mijn hand op in een online meeting, per ongeluk... in het echt.'),
+                        ('versloeg een mug met ninja-bewegingen midden in de nacht.'),
+                        ('nam een selfie die er echt goed uitzag op de eerste poging.'),
+                        ('bracht een dag door met het testen van verschillende manieren om pizza te eten.'),
+                        ('deed alsof ik mijn koffiemok motiveerde voor betere prestaties.')
                     ) AS goals(goal_text);
-                                ''')
+                ''')
                 conn.commit()
                 print("Successfully inserted dummy goals")
             except Exception as e:
                 print(f"Error inserting dummy goals: {e}")
                 conn.rollback()
- 
+            finally:
+                cursor.close()
+                conn.close()
             
 
                 
@@ -1515,7 +1634,8 @@ async def giv_specials(update, context, special_type):
             WHERE user_id = %s AND chat_id = %s
             RETURNING inventory
         '''
-        
+        conn = get_database_connection()
+        cursor = conn.cursor()
         # Execute the query with proper parameterization
         cursor.execute(query, (path, special_type, user_id, chat_id))
         
@@ -1531,6 +1651,10 @@ async def giv_specials(update, context, special_type):
         print(f"Error updating specials: {e}")
         conn.rollback()
         return None
+    finally:
+        cursor.close()
+        conn.close()
+        
 
 def random_emoji():
     emojis = ['😈', "👍", "🔥", "⚡"]
@@ -1546,6 +1670,8 @@ async def reset_to_testing_state(update: Update, context: ContextTypes.DEFAULT_T
     if await check_chat_owner(update, context):
         # Before DELETE, log the current engagements
         chat_id = update.effective_chat.id
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('''
             SELECT COUNT(*) FROM engagements WHERE chat_id = %s
         ''', (chat_id,))
@@ -1586,447 +1712,28 @@ async def reset_to_testing_state(update: Update, context: ContextTypes.DEFAULT_T
             SELECT COUNT(*) FROM engagements WHERE chat_id = %s
         ''', (chat_id,))
         engagement_count_after = cursor.fetchone()[0]
+        cursor.close()
+        conn.close()
         print(f"\n***Engagements after reset: {engagement_count_after}\n")
         return
 
 
-dummy_40_goals = [
-    "knuffelde de kerstman.",
-    "deed de afwas voordat Anne-Cathrine thuis kwam.",
-    "rende 4 km.",
-    "schreef een lief kaartje voor de buren.",
-    "kookte een driegangendiner voor vrienden.",
-    "las een heel boek in één dag.",
-    "maakte een schilderij van de zonsondergang.",
-    "belde met opa om te horen hoe het met hem gaat.",
-    "ging een uur wandelen in het bos.",
-    "organiseerde een filmavond voor de familie.",
-    "leerde een nieuw gerecht te maken.",
-    "gaf geld aan een straatmuzikant.",
-    "voltooide een moeilijke puzzel.",
-    "speelde een bordspel met vrienden.",
-    "gaf een presentatie zonder zenuwen.",
-    "ging naar een museum en leerde iets nieuws.",
-    "maakte een lijst van dingen waar ik dankbaar voor ben.",
-    "schreef een blogpost over persoonlijke groei.",
-    "ruimde de garage volledig op.",
-    "zette de kerstboom op zonder te klagen.",
-    "gaf mezelf een dagje rust en ontspanning.",
-    "liep een halve marathon.",
-    "bakte een taart voor de verjaardag van een vriend.",
-    "leerde een nieuwe taal online.",
-    "hielp een collega met een lastige taak.",
-    "ging naar de sportschool drie keer deze week.",
-    "organiseerde een picknick in het park.",
-    "mediteerde elke ochtend deze week.",
-    "las elke avond voor het slapen gaan.",
-    "haalde mijn rijbewijs na veel oefenen.",
-    "plantte bloemen in de tuin.",
-    "maakte een fotoboek van de afgelopen vakantie.",
-    "liet de hond elke ochtend uit.",
-    "hielp een vriend verhuizen naar een nieuw huis.",
-    "kocht een cadeau voor een vriendin zonder reden.",
-    "probeerde een nieuwe hobby: pottenbakken.",
-    "haalde het huis op tijd voor de lente schoonmaak.",
-    "belde mijn ouders elke avond deze week.",
-    "genoot van een dag zonder telefoon.",
-    "maakte een roadtrip naar een onbekende stad."
-]
-
-
-async def prepare_weekly_goals_poll(chat_id):
-    # Get goals from the past week
-    cursor.execute('''
-        SELECT goal_text 
-        FROM goal_history 
-        WHERE chat_id = %s 
-        AND completion_time >= CURRENT_TIMESTAMP - INTERVAL '7 days'
-        ORDER BY RANDOM()
-    ''', (chat_id,))
+async def scheduled_daily_reset(context_or_application):
+    if hasattr(context_or_application, 'bot'):
+        # It's a context object from JobQueue
+        bot = context_or_application.bot
+    elif hasattr(context_or_application, 'get_bot'):
+        # It's an application object from setup
+        bot = context_or_application.get_bot
+    else:
+        raise ValueError("Invalid context or application passed to scheduled_daily_reset")
+    conn = get_database_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT DISTINCT chat_id FROM users")
+    cursor.close()
+    conn.close()
+    chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
     
-    goals = [row[0] for row in cursor.fetchall()]
-    print(f"goals =\n\n{goals}\n")
-    
-    if len(goals) <= 10:    
-        return goals  # If 10 or fewer goals, use all of them
-    
-    # If more than 10 goals, LLM selection
-    goals_text = "\n".join(f"- {goal}" for goal in goals)
-    print(f"goals text =\n\n{goals_text}\n")
+    for chat_id in chat_ids:
+        await reset_goal_status(bot, chat_id)
 
-    class SimpleArray(BaseModel):
-        goals_array: list[str]  # An array of strings
-    
-    try:
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": """
-                From the provided list of completed goals, select the 10 most impressive, inspiring, or funny ones.
-                Return a JSON array of exactly 10 goals, formatted as:
-                ["goal 1", "goal 2", "goal 3", ...].
-                Ensure each goal is a direct quote from the input list."""},
-                {"role": "user", "content": goals_text}
-            ],
-            response_format=SimpleArray,
-        )
-
-        # Access the goals_array from the parsed response
-        response = completion.choices[0].message.parsed
-        goals_list = response.goals_array
-        print(f"\ngoals_list:\n {goals_list}")
-
-        # Validate we got a valid list and 8-12 goals
-        if not isinstance(goals_list, list) or len(goals_list) < 8 or len(goals_list) > 12:
-            raise ValueError("Invalid response format from GPT")
-            
-        return goals_list
-        
-    except Exception as e:
-        print(f"Error in prepare_weekly_goals_poll: {e}")
-        # If GPT selection fails, take the 10 most recent goals as fallback
-        return goals[:10]
-
-
-async def create_weekly_goals_poll(context, chat_id):
-    try:
-        selected_goals = await prepare_weekly_goals_poll(chat_id)
-
-        # Create poll options, adding number prefixes for easier reference
-        poll_options = [f"{i+1}. {goal}" for i, goal in enumerate(selected_goals)]
-        
-        poll_message = await context.bot.send_poll(
-            chat_id=chat_id,
-            question="🏆🧙‍♂️ Stem op je 3 favoriete doelen van afgelopen week!",
-            options=poll_options,
-            is_anonymous=True,
-            allows_multiple_answers=True
-        )
-        
-        # Store the poll in bot_data
-        context.bot_data[poll_message.poll.id] = poll_message
-        
-        # Schedule a job to retrieve the poll results 12 hours later
-        context.job_queue.run_once(
-            retrieve_poll_results,
-            timedelta(minutes=720),
-            data={"chat_id": chat_id, "message_id": poll_message.message_id, "poll_id": poll_message.poll.id}
-        )
-        closing_time = datetime.now() + timedelta(minutes=721)
-        closing_time_formatted = closing_time.strftime('%H:%M')
-
-        await asyncio.sleep(5)
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text=f"De poll zal sluiten om: *{closing_time_formatted}* 🧙‍♂️", parse_mode = "Markdown"
-        )
-
-        conn.commit()
-    except Exception as e:
-        print(f"Error creating weekly goals poll: {e}")
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="Weekly goals poll viel ergens in het water 🐛🧙‍♂️"
-        )
-        conn.rollback()
-
-
-async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Updates the poll data in bot_data when a poll update is received."""
-    poll = update.poll
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{current_time}] update poll pingy in receive_poll()")
-    # Update the poll in bot_data
-    context.bot_data[poll.id] = poll
-
-
-
-    
-
-async def retrieve_poll_results(context: ContextTypes.DEFAULT_TYPE):
-    job_data = context.job.data
-    chat_id = job_data["chat_id"]
-    await context.bot.send_message(
-    chat_id=chat_id,
-    text="Laatste kans om te stemmen. De poll gaat over 1 minuut sluiten 🧙‍♂️")
-    await asyncio.sleep(70)
-    await context.bot.send_message(
-    chat_id=chat_id,
-    text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen 🧙‍♂️")
-    asyncio.sleep(2)
-    await context.bot.send_message(
-    chat_id=chat_id,
-    text="😳")
-    poll_id = job_data["poll_id"]
-    
-    # Fetch the poll from bot_data
-    poll = context.bot_data.get(poll_id)
-    if not poll:
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="Poll results not found 🐛🧙‍♂️"
-        )
-        return
-
-    # Get options and filter out those with 0 votes
-    voted_options = [option for option in poll.options if option.voter_count > 0]
-    
-    if not voted_options:
-        await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"🏆 ...\n\n0 stemmen in de poll ... 🧙‍♂️"
-        )
-        return
-    
-    sorted_options = sorted(voted_options, key=lambda x: x.voter_count, reverse=True)
-
-    # Function to get top results up to a certain rank
-    def get_top_results(u_counts, rank):
-        # Get the voter counts up to the specified rank
-        top_voter_counts = u_counts[:rank]
-        # Include all options that have voter counts in top_voter_counts
-        return [opt for opt in sorted_options if opt.voter_count in top_voter_counts]
-
-    # Get a list of unique voter counts in descending order
-    unique_voter_counts = sorted({opt.voter_count for opt in sorted_options}, reverse=True)
-
-
-    # Try including up to top 3 voter counts
-    top_results = get_top_results(unique_voter_counts, 3)
-    print(f"these are the top results: {top_results}")
-
-    await award_poll_rewards(context, chat_id, top_results)
-
-        
-async def award_poll_rewards(context, chat_id, top_results):
-    goals_history = await fetch_goals_history(chat_id)
-    if goals_history is None:
-        # Handle the error appropriately
-        await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"🏆 Top 3 doelen uit de poll:\n\n{top_results}\n\npunten uitdelen is niet gelukt, dat moet Ben dus maar zelf even doen 🧙‍♂️"
-        )
-        return
-
-    # Convert to a list of dictionaries
-    goals_history_list = []
-    for row in goals_history:
-        goal = {
-            'id': row[0],
-            'user_id': row[1],
-            'goal_text': row[2],
-            'goal_type': row[3],
-            'challenge_from': row[4],
-        }
-        goals_history_list.append(goal)
-        
-    class PollOption(BaseModel):
-        text: str                 # The goal text
-        voter_count: int          # The number of votes this goal received
-        position: int             # The position (1st, 2nd, 3rd, etc.) in the ranking
-        user_id: int              # The user_id of the person who completed the goal
-        challenge_from_id: int    # The user_id of the challenger (if applicable), otherwise 0
-
-    class GoalMapping(BaseModel):
-        poll_options: list[PollOption]
-
-    try:
-        completion = client.beta.chat.completions.parse(
-            model="gpt-4o",
-            messages=[
-                {"role": "system", "content": """
-                You are given two lists:
-
-                1. Top-voted PollOptions from a poll
-                2. Original goals records submitted by users
-
-                Your task is to complete the top-voted PollOptions list, by:
-                - adding descending position keys to rank each PollOption, such that ties are the same position.
-                - matching each top-voted goal with the original goals, by mapping it onto the corresponding user_id as found in the original goals list.
-                - adding associated challenge_from_ids to the top-voted goals if available, otherwise default to 0. 
-
-                Return the output as the correct JSON object"""},
-                {"role": "user", "content": f"Top-voted goals from a poll:\n{top_results}\n\nOriginal goals submitted by users:\n{goals_history_list}"}
-            ],
-            response_format=GoalMapping,
-        )
-
-
-        response = completion.choices[0].message.parsed
-        print(f"\n!!RESPONSE!!:\n {response}")
-        poll_options = response.poll_options
-        
-        # Dictionary to map positions to points
-        position_points = {1: 3, 2: 2, 3: 1}
-        
-        # Set to keep track of unique challenge_from_ids
-        unique_challengers_ids = set()
-
-        # List to keep track of awarded users for message preparation
-        awarded_users = []
-        
-        for poll_option in poll_options:
-            user_id = poll_option.user_id
-            position = poll_option.position
-            challenge_from_id = poll_option.challenge_from_id
-            goal_text = poll_option.text
-            points_awarded = position_points.get(position, 0)
-
-            # Update the user's score in the database
-            try:
-                cursor.execute('''
-                    UPDATE users
-                    SET score = score + %s
-                    WHERE user_id = %s AND chat_id = %s
-                ''', (points_awarded, user_id, chat_id))
-                conn.commit()
-            except Exception as e:
-                print(f"Error updating score for user {user_id}: {e}")
-                conn.rollback()
-
-            # Collect unique challenge_from_ids (excluding 0 or None)
-            if challenge_from_id and challenge_from_id != 0:
-                unique_challengers_ids.add(challenge_from_id)
-
-            # Add to awarded users list for message preparation
-            awarded_users.append({
-                'user_id': user_id,
-                'points_awarded': points_awarded,
-                'goal_text': goal_text
-            })
-        
-        # Prepare messages for awarded users
-        for user in awarded_users:
-            user_id = user['user_id']
-            first_name = await get_first_name(context, user_id=user_id)
-            user['first_name'] = first_name
-
-        # Prepare first names for challengers
-        challenger_names = []
-        for challenger_id in unique_challengers_ids:
-            first_name = await get_first_name(context, user_id=challenger_id)
-            challenger_names.append(first_name)
-            
-        # Prepare the award messages
-        award_messages = []
-        for user in awarded_users:
-            first_name = user['first_name']
-            points_awarded = user['points_awarded']
-            goal_text = user['goal_text']
-            # Strip the number and period from the start of the goal_text
-            goal_text = re.sub(r'^\d+\.\s*', '', goal_text)
-
-            # Prepare the message
-            award_message = f"*{first_name}* {goal_text}\n_+{points_awarded} punt{'en' if points_awarded != 1 else ''}_"
-            award_messages.append(award_message)
-
-        # Combine the messages
-        awards_text = "🧙‍♂️🏅 *Punten zijn uitgedeeld aan de volgende vlijtige vlerkjes* \n\n" + "\n\n".join(award_messages)
-
-        if challenger_names:
-            if len(challenger_names) == 1:
-                honorable_mentions_text = f"🧙‍♂️🤝 *Eervolle vermelding voor uw uitstekende uitdager* \n{challenger_names[0]} 😈"
-            else:
-                honorable_mentions_text = "🧙‍♂️🤝 *Eervolle vermeldingen voor uw uitstekende uitdagers* \n" + ", ".join(challenger_names) + " 😈"
-        else:
-            honorable_mentions_text = "_Geen uitdagers om te vermelden deze keer 🧙‍♂️_"
-        # Announcements, including pauses for effect
-        await asyncio.sleep(3)
-        await context.bot.send_message(
-        chat_id=chat_id,
-        text="🎊")
-        await asyncio.sleep(1)
-        await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"{awards_text}", parse_mode = "Markdown")
-        await asyncio.sleep(10)
-        await context.bot.send_message(
-        chat_id=chat_id,
-        text=f"{honorable_mentions_text}", parse_mode = "Markdown")
-        await asyncio.sleep(1)
-        await context.bot.send_message(
-        chat_id=chat_id,
-        text="🎊")
-        
-
-
-        # # Validate we got a valid list and 8-12 goals
-        # if not isinstance(GoalMapping):
-        #     raise ValueError("Invalid response format from GPT")
-
-        #     return goals_list
-        
-    except Exception as e:
-        print(f"Error in award_poll_rewards: {e}")
-        return print(f'wh00ps')
-    
-
-
-
-
-async def fetch_goals_history(chat_id):
-    try:
-        cursor.execute('''
-        SELECT id, user_id, goal_text, 
-        goal_type, challenge_from 
-        FROM goal_history 
-        WHERE chat_id = %s 
-        AND completion_time >= CURRENT_TIMESTAMP - INTERVAL '7 days'
-        ''', (chat_id,))
-        results = cursor.fetchall()
-    except Exception as e:
-        print(f"\nError fetching goals_history: {e}\n")
-        return None
-
-    return results
-
-
-dummy_goals_history = [
-    (1, '955543456', "knuffelde de kerstman", 'personal', None),
-    (2, '123334', "deed de afwas voordat Anne-Cathrine thuis kwam", 'personal', None),
-    (3, '955543456', "rende 4 km", 'challenges', '786786'),
-    (4, '666666', "schreef een lief kaartje voor de buren", 'personal', None)
-    ]
-
-# dummy_40_goals = [
-#     "knuffelde de kerstman.",
-#     "deed de afwas voordat Anne-Cathrine thuis kwam.",
-#     "rende 4 km.",
-#     "schreef een lief kaartje voor de buren.",
-#     "kookte een driegangendiner voor vrienden.",
-#     "las een heel boek in één dag.",
-#     "maakte een schilderij van de zonsondergang.",
-#     "belde met opa om te horen hoe het met hem gaat.",
-#     "ging een uur wandelen in het bos.",
-#     "organiseerde een filmavond voor de familie.",
-#     "leerde een nieuw gerecht te maken.",
-#     "gaf geld aan een straatmuzikant.",
-#     "voltooide een moeilijke puzzel.",
-#     "speelde een bordspel met vrienden.",
-#     "gaf een presentatie zonder zenuwen.",
-#     "ging naar een museum en leerde iets nieuws.",
-#     "maakte een lijst van dingen waar ik dankbaar voor ben.",
-#     "schreef een blogpost over persoonlijke groei.",
-#     "ruimde de garage volledig op.",
-#     "zette de kerstboom op zonder te klagen.",
-#     "gaf mezelf een dagje rust en ontspanning.",
-#     "liep een halve marathon.",
-#     "bakte een taart voor de verjaardag van een vriend.",
-#     "leerde een nieuwe taal online.",
-#     "hielp een collega met een lastige taak.",
-#     "ging naar de sportschool drie keer deze week.",
-#     "organiseerde een picknick in het park.",
-#     "mediteerde elke ochtend deze week.",
-#     "las elke avond voor het slapen gaan.",
-#     "haalde mijn rijbewijs na veel oefenen.",
-#     "plantte bloemen in de tuin.",
-#     "maakte een fotoboek van de afgelopen vakantie.",
-#     "liet de hond elke ochtend uit.",
-#     "hielp een vriend verhuizen naar een nieuw huis.",
-#     "kocht een cadeau voor een vriendin zonder reden.",
-#     "probeerde een nieuwe hobby: pottenbakken.",
-#     "haalde het huis op tijd voor de lente schoonmaak.",
-#     "belde mijn ouders elke avond deze week.",
-#     "genoot van een dag zonder telefoon.",
-#     "maakte een roadtrip naar een onbekende stad."
-# ]

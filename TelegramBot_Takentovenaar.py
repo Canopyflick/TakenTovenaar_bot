@@ -31,17 +31,26 @@ if not api_key:
 # Initialize the OpenAI client
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
-# Use DATABASE_URL if available (Heroku), otherwise fallback to LOCAL_DB_URL
-DATABASE_URL = os.getenv('DATABASE_URL', os.getenv('LOCAL_DB_URL'))
 
 # Connect to the PostgreSQL database
-if os.getenv('DATABASE_URL'):  # Running on Heroku
-    conn = psycopg2.connect(DATABASE_URL, sslmode='require')
-else:  # Running locally
-    conn = psycopg2.connect(DATABASE_URL)  # For local development, no SSL required
+def get_database_connection():
+    # Use DATABASE_URL if available (Heroku), otherwise fallback to LOCAL_DB_URL
+    DATABASE_URL = os.getenv('DATABASE_URL', os.getenv('LOCAL_DB_URL'))
 
+    if not DATABASE_URL:
+        raise ValueError("Database URL not found! Ensure 'DATABASE_URL' or 'LOCAL_DB_URL' is set in the environment.")
+
+    # Connect to the PostgreSQL database
+    if os.getenv('HEROKU_ENV'):  # Running on Heroku
+        conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+    else:  # Running locally
+        conn = psycopg2.connect(DATABASE_URL)  # For local development, no SSL required
+
+    return conn
+
+
+conn = get_database_connection()
 cursor = conn.cursor()
-
 # Create the tables if they don't exist (for new users/tables) and check if there's newly added columns (for live dev updates)
 try:
     # Function to get existing columns
@@ -162,8 +171,13 @@ try:
 except Exception as e:
     print(f"Error updating database schema: {e}")
     conn.rollback()
+finally:
+    cursor.close()
+    conn.close()    
 
 
+conn = get_database_connection()
+cursor = conn.cursor()
 try:
     cursor.execute('SELECT 1')
     print("Database connection successful")
@@ -191,13 +205,22 @@ try:
 except Exception as e:
     print(f"Error fetching column date: {e}")
     conn.rollback()
+finally:
+    cursor.close()
+    conn.close() 
+    
 
 
-async def get_first_name(context_or_application, user_id=None, username=None):
+async def get_first_name(context_or_bot, user_id):
     try:
         # Check if context or application has a bot object
-        # If `context_or_application` doesn't have a bot, fall back to global_bot
-        bot = getattr(context_or_application, 'bot', global_bot)
+        if hasattr(context_or_bot, 'bot'):
+            # A context object was passed
+            bot = context_or_bot.bot
+        else:
+        # A bot instance was passed
+            bot = context_or_bot
+            
         if bot is None:
             raise ValueError("Bot is not initialized")
         # Fetch the user object from the bot
@@ -205,7 +228,8 @@ async def get_first_name(context_or_application, user_id=None, username=None):
         return user.first_name  # Return the first name of the user
     except Exception as e:
         print(f"Error fetching user details for user_id {user_id}: {e}")
-        return "Lodewijk"
+        return "Lodewijk 🚨🐛"
+
 
 
 # Security check: am I in the chat where the bot is used?
@@ -242,21 +266,22 @@ async def print_edit(update, context):
 # Setup function 
 async def setup(application):
     try:
-        from utils import reset_goal_status, create_weekly_goals_poll
+        from utils import scheduled_daily_reset
         # Schedule the daily reset job 
         job_queue = application.job_queue
         reset_time = time(hour=2, minute=0, second=0)
-        job_queue.run_daily(reset_goal_status, time=reset_time)
+        job_queue.run_daily(scheduled_daily_reset, time=reset_time)
         print(f"\nDaily reset job queue set up successfully at {reset_time}")
 
+        from handlers.weekly_poll import scheduled_weekly_poll
         # Schedule the weekly poll job 
-        poll_time = time(hour=7, minute=0)  # 7 AM
+        poll_time = time(hour=8, minute=59)  # +2hs from CET?
         job_queue.run_daily(
-            create_weekly_goals_poll, 
+            scheduled_weekly_poll, 
             time=poll_time, 
-            days=(5,),  # Saturday
+            days=(0,)  # Monday
         )
-        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday")
+        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Monday")
 
         from utils import get_last_reset_time
         # Check if reset is needed on startup
@@ -273,7 +298,7 @@ async def setup(application):
             if last_reset is None or last_reset < reset_time_today:
                 # Perform the fallback reset
                 print("^ Perform catch-up reset ^\n")
-                await reset_goal_status(application)
+                await scheduled_daily_reset(application)
             else:
                 print("^ No catch-up reset needed ^\n")  
         else:
@@ -282,7 +307,7 @@ async def setup(application):
             if last_reset is None or last_reset < reset_time_yesterday:
                 # Perform the fallback reset
                 print("^ Performing catch-up reset ^")
-                await reset_goal_status(application)
+                await scheduled_daily_reset(application)
 
     except Exception as e:
         print(f"Error setting up job queue: {e}")
@@ -347,12 +372,13 @@ def main():
         # Complexer engagements
         application.add_handler(CommandHandler(["link", "links", "linken"], link_command))
         
-        # Weekly polls
-        from utils import analyze_message, receive_poll
+        # (Weekly) goals poll
+        from utils import analyze_message
+        from handlers.weekly_poll import receive_poll, poll_command
         application.add_handler(PollHandler(receive_poll))
+        application.add_handler(CommandHandler("poll", poll_command))
 
-        
-        
+  
         
         # Bind the message analysis to any non-command text messages
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))

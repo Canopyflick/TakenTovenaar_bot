@@ -1,5 +1,5 @@
 ﻿from telegram.ext import CommandHandler, MessageHandler, ConversationHandler, filters
-from utils import conn, cursor
+from TelegramBot_Takentovenaar import get_database_connection
 
 
 
@@ -21,6 +21,8 @@ async def confirm_wipe(update, context):
     user_response = update.message.text.strip()
     
     if user_response == 'JA':
+        conn = get_database_connection()
+        cursor = conn.cursor()
         try:
             cursor.execute('DELETE FROM engagements WHERE engager_id = %s AND chat_id = %s', (user_id, chat_id))
             cursor.execute('DELETE FROM engagements WHERE engaged_id = %s AND chat_id = %s', (user_id, chat_id))
@@ -31,7 +33,11 @@ async def confirm_wipe(update, context):
         except Exception as e:
             print(f"Error wiping database after confirm_wipe: {e}")
             conn.rollback()
+        finally:
+            cursor.close()
+            conn.close() 
         return ConversationHandler.END
+
 
         # desired_columns = await desir
         # await add_missing_columns(update, context)

@@ -1,5 +1,5 @@
-﻿from TelegramBot_Takentovenaar import get_first_name
-from utils import add_special, conn, cursor, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
+﻿from TelegramBot_Takentovenaar import get_first_name, get_database_connection
+from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
 
 
 # Asynchronous command functions
@@ -49,6 +49,8 @@ async def stats_command(update, context):
     # Fetch user stats from the database
     result = None
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('''
             SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text
             FROM users
@@ -59,7 +61,9 @@ async def stats_command(update, context):
         print(f"Result is {result}")
     except Exception as e:
         print(f"Error: {e} couldn't fetch user stats?'")
-
+    finally:
+        cursor.close()
+        conn.close()
 
     if result:
         total_goals, completed_goals, score, today_goal_status, today_goal_text = result
@@ -72,18 +76,40 @@ async def stats_command(update, context):
                             
         # Check for the three possible goal statuses
         if today_goal_status == 'set':
+            conn = get_database_connection()
+            cursor = conn.cursor()
             cursor.execute("SELECT set_time FROM users WHERE user_id = %s AND chat_id = %s", (user_id, chat_id))
             set_time = cursor.fetchone()
+            
             if set_time:
                 set_time = set_time[0]
                 formatted_set_time = set_time.strftime("%H:%M")
+            # Check if user is live engaged
             if await fetch_live_engagements(chat_id, engaged_id = user_id):
                 print(f"user_id: {user_id}")
                 escaped_emoji_string = await fetch_live_engagements(chat_id, engaged_id = user_id)
-                stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}"
-    
+                print(f"escaped_emoji_string: {escaped_emoji_string}")
+                # this will contain challenges and links, where the user is ENGAGED 
+                escaped_pending_emojis =  await fetch_live_engagements(chat_id, status = 'pending', engaged_id = user_id)
+                # but we want only the links
+                if "🤝" in escaped_pending_emojis:
+                    escaped_combined_string = await process_emojis(escaped_emoji_string, escaped_pending_emojis)
+                    print(f"FINAL STRING pff please let this ever happen: {escaped_combined_string}")
+                    stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_combined_string}\n📝 {escape_markdown_v2(today_goal_text)}"
+                if "🤝" not in escaped_pending_emojis:
+                    stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}"
+                # And then a special treatment for the links where user is ENGAGER #7890
+                pending_emojis_2 =  await fetch_live_engagements(chat_id, status = 'pending', engager_id = user_id)
+                if "🤝" in pending_emojis_2:
+                    links_string = await get_links_engaged_names(context, user_id, cursor)
+                    cursor.close()
+                    escaped_links_string = escape_markdown_v2(links_string)
+                    stats_message += f"\n{escaped_links_string}"
             else:
                 stats_message += f"📅 Dagdoel: ingesteld om {escape_markdown_v2(formatted_set_time)}\n📝 {escape_markdown_v2(today_goal_text)}"
+                
+            cursor.close()
+            conn.close()
         elif today_goal_status.startswith('Done'):
             completion_time = today_goal_status.split(' ')[3]  # Extracts time from "Done today at H:M"
             stats_message += f"📅 Dagdoel: voltooid om {escape_markdown_v2(completion_time)}\n📝 ||{escape_markdown_v2(today_goal_text)}||"
@@ -101,6 +127,64 @@ async def stats_command(update, context):
         else:
             await update.message.reply_text(escape_markdown_v2(f"{first_name} heeft nog geen statistieken. \nBegin met het instellen van een doel 🧙‍♂️\n(/start)"),
             parse_mode="MarkdownV2")
+            
+
+# fix later huhauhue
+async def process_emojis(escaped_emoji_string, escaped_pending_emojis):
+    # Extract the existing emojis inside the brackets from the escaped_emoji_string
+    # Assuming the escaped_emoji_string starts and ends with \( and \)
+    start_bracket = escaped_emoji_string.index(r"\(") + 2
+    end_bracket = escaped_emoji_string.index(r"\)")
+    
+    # Get the existing emojis inside the brackets
+    inner_emojis = escaped_emoji_string[start_bracket:end_bracket]
+    
+    # Extract all 🤝 emojis from the pending emoji string
+    pending_links = ''.join([char for char in escaped_pending_emojis if char == '🤝'])
+    combined_inner_emojis = inner_emojis + pending_links
+    
+    # Create the new string with the updated emojis inside the brackets
+    new_escaped_emoji_string = r"(" + combined_inner_emojis + r")"
+    escaped_combined_string = escape_markdown_v2(new_escaped_emoji_string)
+    
+    return escaped_combined_string
+
+            
+async def get_links_engaged_names(context, engager_id, cursor):
+    try:
+        # Fetch the engaged_ids where special_type is 'links'
+        cursor.execute('''
+            SELECT engaged_id
+            FROM engagements
+            WHERE engager_id = %s
+            AND special_type = 'links'
+            AND status IN ('live', 'pending');
+        ''', (engager_id,))
+        
+        engaged_ids = cursor.fetchall()  # This returns a list of tuples
+        
+        # Get a list of engaged user IDs
+        engaged_ids = [engaged_id[0] for engaged_id in engaged_ids]
+
+        # Initialize the emoji string
+        emoji_string = '🤝' * len(engaged_ids)
+
+        # Fetch all the first names asynchronously and store them in a list
+        names = []
+        for engaged_id in engaged_ids:
+            first_name = await get_first_name(context, engaged_id)
+            names.append(first_name)
+
+        # Join the names with commas
+        names_string = ', '.join(names)
+
+        # Prepend the emoji string to the names string
+        final_string = f"{emoji_string} {names_string}"
+        
+        return final_string
+    except Exception as e:
+        print(f"Error: {e}")
+        return "Error fetching names"
 
 
 async def reset_command(update, context):
@@ -114,6 +198,8 @@ async def reset_command(update, context):
                 await update.message.reply_text(f"Challenge reeds accepted. 😈 Er is geen weg meer terug 👻🧙‍♂️\n_{goal_text}_", parse_mode = "Markdown")        
                 return False
         try:
+            conn = get_database_connection()
+            cursor = conn.cursor()
             #Reset the user's goal status, subtract 1 point, and clear today's goal text
             cursor.execute('''
                            UPDATE users
@@ -128,7 +214,9 @@ async def reset_command(update, context):
         except Exception as e:
             print(f"Error resetting goal in database: {e}")
             conn.rollback()
-        
+        finally:
+            cursor.close()
+            conn.close()
         await update.message.reply_text("Je doel voor vandaag is gereset 🧙‍♂️\n_-1 punt_", parse_mode="Markdown")
     else:
         await update.message.reply_text("Je hebt geen onvoltooid doel om te resetten 🧙‍♂️ \n(_Zie /stats voor je dagdoelstatus_).", parse_mode="Markdown")
@@ -258,6 +346,8 @@ async def handle_admin(update, context, type, amount=None):
     first_name = update.message.reply_to_message.from_user.first_name
     chat_id = update.effective_chat.id
     valid_special_types = ['boosts', 'links', 'challenges']
+    conn = get_database_connection()
+    cursor = conn.cursor()
     if type == 'gift':
         try:
             cursor.execute('''
@@ -330,7 +420,9 @@ async def handle_admin(update, context, type, amount=None):
                 await update.message.reply_text(f"Error: {e}")
                 conn.rollback()
                 return
-
+    cursor.close()
+    conn.close() 
+        
 
 async def boost_command(update, context):
     await check_use_of_special(update, context, special_type="boosts")

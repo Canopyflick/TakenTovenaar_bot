@@ -1,6 +1,6 @@
 ﻿from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ConversationHandler, CallbackContext
-from utils import check_identical_engagement, fetch_live_engagements, conn, cursor, check_use_of_special, add_special, send_openai_request, fetch_goal_status
+from utils import check_identical_engagement, fetch_live_engagements, check_use_of_special, add_special, send_openai_request, fetch_goal_status, get_database_connection
 
 
 HANDLE_RESPONSE = 1
@@ -28,6 +28,8 @@ async def challenge_command_2(update, context, engager_id, engager_name, engaged
         return
     chat_id = update.effective_chat.id
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         cursor.execute('''
         INSERT INTO engagements (engager_id, engaged_id, chat_id, special_type, status)
         VALUES (%s, %s, %s, %s, %s)
@@ -43,6 +45,9 @@ async def challenge_command_2(update, context, engager_id, engager_name, engaged
         await update.message.reply_text("Er is een fout opgetreden bij het uitdagen 🧙‍♂️🐛")
         conn.rollback()
         return
+    finally:
+        cursor.close()
+        conn.close()
     
     await add_special(engager_id, chat_id, "challenges", -1)   
 
@@ -151,6 +156,8 @@ async def handle_challenge_response(update, context):
 
     # Handle acceptance or rejection or retraction
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         if action == 'retract':
             print(f"\n4/4 ({query.data})\nACTION = RETRACT\n\nCallback data:{query.data}")
             if user_id != engager_id:
@@ -285,7 +292,9 @@ async def handle_challenge_response(update, context):
             await query.edit_message_text(f"De tijd om te reageren op deze uitdaging is bij deze dan voorbij ([{engaged_name}](tg://user?id={engaged_id}))🧙‍♂️", parse_mode = "Markdown")
         else:
             await query.edit_message_text(f"Er is een fout opgetreden: {e}. Probeer het opnieuw ofzo..? 🧙‍♂️")
-            
+    finally:
+        cursor.close()
+        conn.close()        
     return ConversationHandler.END
 
 
