@@ -231,7 +231,7 @@ async def filosofie_command(update, context):
         goal_text = fetch_goal_text(update)
         philosophical_message = get_random_philosophical_message()
         if goal_text != '' and goal_text != None:
-                messages = prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
+                messages = await prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
                 await update.message.reply_text(f"Mijn grootvader zei altijd:\n✨_{grandpa_quote}_ 🧙‍♂️✨", parse_mode="Markdown")
         else:  
@@ -246,31 +246,29 @@ async def inventory_command(update, context):
 
 async def acties_command(update, context):
     acties_message = (
-        '*Alle beschikbare acties*\n'
+        '*Alle beschikbare acties* 🧙‍♂️\n'
         '⚡ */boost* - Boost andermans doel, verhoog de inzet!\n\n'
         '😈 */challenge* - Daag iemand uit om iets specifieks te doen."\n\n'
-        '🤝 */link* - Verbind je lot met een ander... (🚧)\n\n'
+        '🤝 */link* - Verbind je lot met een ander... \n\n'
         '*Zo zet je ze in*\n'
         'Gebruik je actie door met het passende commando op een berichtje van je doelwit '
         'te reageren, of hen na het commando te taggen:\n\n'
         '- _/boost @Willem_\n\n'
         '- _/challenge @Josefietje om voor 11u weer thuis te zijn voor de koffie_\n\n'
         'Druk op >> /details << voor meer info over acties.\n\n'
-        '🚧 _under construction, werkt nog niet_'
     )
     await update.message.reply_text(acties_message, parse_mode="Markdown")
     
 
 async def details_command(update, context):
     details_message = (
-        '*Extra uitleg over de acties*\n\n'
+        '*Extra uitleg over de acties* 🧙‍♂️\n\n'
         '⚡ *Boost* je andermans doel, dan krijgen jij en je doelwit *+1* punt als ze het halen.\nHalen zij hun doel die dag niet, dan krijg jij je boost terug.\n\n'
         '😈 *Challenge* iemand om iets specifieks te doen vandaag. Jij krijgt *+1* punt zodra de uitdaging geaccepteerd wordt, en zij overschrijven hun dagdoel (als ze dat '
-        'al ingesteld hadden.) De ander krijgt *+2* punten bij voltooiing. Als je bij je challenge niemand tagt of beantwoordt, stuur je een open uitdaging. Die kan kan dan door iedereen '
-        'worden geaccepteerd.\nWordt de uitdaging niet geaccepteerd, dan krijg jij je challenge-actie einde dag weer terug.\n\n '
-        '🤝(🚧) *Link* jouw doel met dat van een ander. Nu moeten jullie allebei je dagdoel halen om *+2* punten bonus pp te verdienen.\nLukt dit '
-        'een van beiden niet, dan verlies jij *-1* punt (en zij hun kans op bonus).\n\n'
-        '🚧_under construction, links werken nog niet_'
+        'al ingesteld hadden). Bij voltooiing krijgen zij *+2* punten. Als je met je challenge niemand tagt of niemands berichtje beantwoordt, stuur je een open uitdaging. Die kan kan dan door iedereen '
+        'worden geaccepteerd.\nWordt je uitdaging niet geaccepteerd dan kun je hem terugtrekken, of wachten, dan krijg je hem einde dag vanzelf weer terug.\n\n '
+        '🤝 *Link* jouw doel met dat van een ander. Nu moeten jullie allebei je dagdoel halen om *+2* punten bonus pp te verdienen.\nLukt dit '
+        'een van beiden niet, betekent dat *-1* punt voor jou (en voor hen geen bonus).\n\n'
     )
     await update.message.reply_text(details_message, parse_mode="Markdown")
 

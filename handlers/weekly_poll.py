@@ -7,8 +7,15 @@ from telegram.ext import ContextTypes
 import asyncio, re
 
 async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
     if await check_chat_owner(update, context):
-        await create_weekly_goals_poll(context, update.effective_chat.id)
+        await create_weekly_goals_poll(context, chat_id)
+    else:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text=f"Geduld, ohh ngeduldige xx 🧙‍♂️", parse_mode = "Markdown"
+        )
+        
 
 
 async def scheduled_weekly_poll(context):
@@ -16,7 +23,6 @@ async def scheduled_weekly_poll(context):
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT chat_id FROM users")
     chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
-    from handlers.weekly_poll import create_weekly_goals_poll
     for chat_id in chat_ids:
         await create_weekly_goals_poll(context, chat_id)
     cursor.close()
@@ -81,7 +87,9 @@ async def prepare_weekly_goals_poll(chat_id):
     
     goals = [row[0] for row in cursor.fetchall()]
     print(f"goals =\n\n{goals}\n")
-    
+    if len(goals) <= 2:
+        return 'too few goals this week' # If fewer than 3 goals, cancel the poll in create weekly_goals_poll function
+        
     if len(goals) <= 10:    
         return goals  # If 10 or fewer goals, use all of them
     
@@ -119,7 +127,7 @@ async def prepare_weekly_goals_poll(chat_id):
         
     except Exception as e:
         print(f"Error in prepare_weekly_goals_poll: {e}")
-        # If GPT selection fails, take the 10 most recent goals as fallback
+        # If GPT selection fails, take 10 random goals as fallback
         return goals[:10]
     finally:
         cursor.close()
@@ -129,13 +137,14 @@ async def create_weekly_goals_poll(context, chat_id):
     try:
         print(f"\n\n|||||||||||| Creating weekly poll...\nfor chat_id     {chat_id}🧙‍♂️|||||||||||||||||||||||\n")            
         selected_goals = await prepare_weekly_goals_poll(chat_id)
-
+        if selected_goals == 'too few goals this week':
+            return # cancel the poll
         # Create poll options, adding number prefixes for easier reference
         poll_options = [f"{i+1}. {goal}" for i, goal in enumerate(selected_goals)]
         
         poll_message = await context.bot.send_poll(
             chat_id=chat_id,
-            question="🏆🧙‍♂️ Stem op je 3 favoriete doelen van afgelopen week!",
+            question="🏆🧙‍♂️ Stem op je favoriete doelen van afgelopen week!",
             options=poll_options,
             is_anonymous=True,
             allows_multiple_answers=True
@@ -311,34 +320,36 @@ async def award_poll_rewards(context, chat_id, top_results):
             challenge_from_id = poll_option.challenge_from_id
             goal_text = poll_option.text
             points_awarded = position_points.get(position, 0)
-
-            # Update the user's score in the database
-            try:
-                conn = get_database_connection()
-                cursor = conn.cursor()
-                cursor.execute('''
-                    UPDATE users
-                    SET score = score + %s
-                    WHERE user_id = %s AND chat_id = %s
-                ''', (points_awarded, user_id, chat_id))
-                conn.commit()
-            except Exception as e:
-                print(f"Error updating score for user {user_id}: {e}")
-                conn.rollback()
-            finally:
-                cursor.close()
-                conn.close()
+            
+            # Only proceed if points are awarded
+            if points_awarded > 0:
+                # Update the user's score in the database
+                try:
+                    conn = get_database_connection()
+                    cursor = conn.cursor()
+                    cursor.execute('''
+                        UPDATE users
+                        SET score = score + %s
+                        WHERE user_id = %s AND chat_id = %s
+                    ''', (points_awarded, user_id, chat_id))
+                    conn.commit()
+                except Exception as e:
+                    print(f"Error updating score for user {user_id}: {e}")
+                    conn.rollback()
+                finally:
+                    cursor.close()
+                    conn.close()
                 
-            # Collect unique challenge_from_ids (excluding 0 or None)
-            if challenge_from_id and challenge_from_id != 0:
-                unique_challengers_ids.add(challenge_from_id)
+                # Collect unique challenge_from_ids (excluding 0 or None)
+                if challenge_from_id and challenge_from_id != 0:
+                    unique_challengers_ids.add(challenge_from_id)
 
-            # Add to awarded users list for message preparation
-            awarded_users.append({
-                'user_id': user_id,
-                'points_awarded': points_awarded,
-                'goal_text': goal_text
-            })
+                # Add to awarded users list for message preparation
+                awarded_users.append({
+                    'user_id': user_id,
+                    'points_awarded': points_awarded,
+                    'goal_text': goal_text
+                })
         
         # Prepare messages for awarded users
         for user in awarded_users:

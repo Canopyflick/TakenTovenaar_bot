@@ -1,16 +1,22 @@
 ﻿import os
 import psycopg2
 from telegram import Bot, ChatMember
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, CallbackQueryHandler, PollAnswerHandler, PollHandler
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, CallbackQueryHandler, PollAnswerHandler, PollHandler, ExtBot
 from openai import OpenAI
 import asyncio
 from datetime import datetime, time, timedelta
 
-global_bot = None
+# Global bot instance
+global_bot: ExtBot = None
 
-def initialize_bot(token):
+def initialize_bot(token: str) -> None:
+    """Initialize the global bot instance with the given token."""
     global global_bot
-    global_bot = Bot(token)
+    application = ApplicationBuilder().token(token).build()
+    global_bot = application.bot
+    # Ensure the bot is initialized
+    if not global_bot:
+        raise ValueError("Failed to initialize bot")
 
 local_flag = False
 
@@ -86,7 +92,7 @@ try:
         'set_time': 'TIMESTAMP',  
         'today_goal_text': "TEXT DEFAULT ''",
         'live_challenge': "TEXT DEFAULT '{}'",
-        'inventory': "JSONB DEFAULT '{\"boosts\": 2, \"links\": 2, \"challenges\": 2}'",
+        'inventory': "JSONB DEFAULT '{\"boosts\": 2, \"challenges\": 2, \"links\": 2}'",
     }
 
     # Create the tables if they don't exist
@@ -102,7 +108,7 @@ try:
             set_time TIMESTAMP,       
             today_goal_text TEXT DEFAULT '',
             live_challenge TEXT DEFAULT '{}',
-            inventory JSONB DEFAULT '{"boosts": 2, "links": 2, "challenges": 2}',       
+            inventory JSONB DEFAULT '{"boosts": 2, "challenges": 2, "links": 2}',       
             PRIMARY KEY (user_id, chat_id)
         )
     ''')
@@ -212,17 +218,18 @@ finally:
 
 
 async def get_first_name(context_or_bot, user_id):
+    global global_bot
     try:
-        # Check if context or application has a bot object
+        # Determine which bot instance to use
         if hasattr(context_or_bot, 'bot'):
-            # A context object was passed
             bot = context_or_bot.bot
-        else:
-        # A bot instance was passed
+        elif isinstance(context_or_bot, (Bot, ExtBot)):
             bot = context_or_bot
-            
-        if bot is None:
-            raise ValueError("Bot is not initialized")
+        else:
+            # Fallback to global bot if available
+            if global_bot is None:
+                raise ValueError("No bot instance available")
+            bot = global_bot
         # Fetch the user object from the bot
         user = await bot.get_chat(user_id)  # This gets the user object
         return user.first_name  # Return the first name of the user

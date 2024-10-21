@@ -80,7 +80,7 @@ async def reset_goal_status(bot, chat_id):
                     amount = live_engagements.count("🤝")
                     amount += pending_engagements.count("🤝")
                     # different logic for links
-                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_-{amount} punten_"
+                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n__{amount} punten_"
                                    , parse_mode="MarkdownV2")
                     try:
                         cursor.execute('''
@@ -382,73 +382,70 @@ async def check_identical_engagement(engager_id, engaged_id, special_type, chat_
 
 # Assistant_response == 'Doelstelling'          
 async def handle_goal_setting(update, user_id, chat_id):
-    if has_goal_today(user_id, chat_id):
-        await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
-    else:
-        user_message = update.message.text
+    user_message = update.message.text
 
-        # Rephrase the goal in second person
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                temperature=1,
-                messages=[
-                    {"role": "system", "content": "Je herformuleert de dagelijkse doelstelling van de gebruiker naar een zin in de tweede persoon enkelvoud, zoiets van 'Vandaag ga jij [doel]', 'Jij bent vandaag van plan [doel]', etc. Zorg ervoor dat bij het omschrijven geen informatie verloren gaat."},
-                    {"role": "user", "content": user_message}
-                ]
-            )
-            goal_text = response.choices[0].message.content.strip()
-        except Exception as e:
-            await update.message.reply_text("Er ging iets mis bij het verwerken van je doel. Probeer het later opnieuw.")
-            print(f"Error in rewording goal to 2nd person: {e}")
-            return
-        
-        # Save the reworded goal in the database        
-        update_user_goal(user_id, chat_id, goal_text)
-        # Change goal status and total
-        try:
-            conn = get_database_connection()
-            cursor = conn.cursor()
-            set_time = datetime.now()
-            cursor.execute('''
-                           UPDATE users 
-                           SET today_goal_status = 'set',
-                           set_time = %s,
-                           total_goals = total_goals + 1,
-                           score = score + 1
-                           WHERE user_id = %s AND chat_id = %s
-                           ''', (set_time, user_id, chat_id))
-            conn.commit()
-        except Exception as e:
-            await update.message.reply_text("Doelstatusprobleempje. Probeer het later opnieuw.")
-            print(f"Error updating today_goal_status: {e}")
-            conn.rollback()
-            return
-        finally:
-            cursor.close()
-            conn.close() 
-            
-        # Send confirmation message
-        if update.message.text.endswith(';)'):
-            await update.message.reply_text('🥰 Succes schatje! 😚 \n_+1 punt_', parse_mode="Markdown")
-        elif random.random() < 0.125:
-            await update.message.reply_text('Staat genoteerd! 🧙‍♂️ Succes! 💖 \n_+1 punt_', parse_mode="Markdown")
-        else:
-            responses = [
-                'Staat genoteerd! ✍️ \n_+1 punt_',
-                'Staat genoteerd! 📝 \n_+1 punt_',
-                'Staat genoteerd! 📋 \n_+1 punt_',
-                'Staat genoteerd! ✒️ \n_+1 punt_',
-                'Staat genoteerd! 🖊️ \n_+1 punt_',
-                'Staat genoteerd! ✏️ \n_+1 punt_'
+    # Rephrase the goal in second person
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            temperature=1,
+            messages=[
+                {"role": "system", "content": "Je herformuleert de dagelijkse doelstelling van de gebruiker naar een zin in de tweede persoon enkelvoud, zoiets van 'Vandaag ga jij [doel]', 'Jij bent vandaag van plan [doel]', etc. Zorg ervoor dat bij het omschrijven geen informatie verloren gaat."},
+                {"role": "user", "content": user_message}
             ]
-            reply = random.choice(responses)
-            await update.message.reply_text(reply, parse_mode="Markdown")
+        )
+        goal_text = response.choices[0].message.content.strip()
+    except Exception as e:
+        await update.message.reply_text("Er ging iets mis bij het verwerken van je doel. Probeer het later opnieuw.")
+        print(f"Error in rewording goal to 2nd person: {e}")
+        return
+        
+    # Save the reworded goal in the database        
+    update_user_goal(user_id, chat_id, goal_text)
+    # Change goal status and total
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        set_time = datetime.now()
+        cursor.execute('''
+                        UPDATE users 
+                        SET today_goal_status = 'set',
+                        set_time = %s,
+                        total_goals = total_goals + 1,
+                        score = score + 1
+                        WHERE user_id = %s AND chat_id = %s
+                        ''', (set_time, user_id, chat_id))
+        conn.commit()
+    except Exception as e:
+        await update.message.reply_text("Doelstatusprobleempje. Probeer het later opnieuw.")
+        print(f"Error updating today_goal_status: {e}")
+        conn.rollback()
+        return
+    finally:
+        cursor.close()
+        conn.close() 
+            
+    # Send confirmation message
+    if update.message.text.endswith(';)'):
+        await update.message.reply_text('🥰 Succes schatje! 😚 \n_+1 punt_', parse_mode="Markdown")
+    elif random.random() < 0.125:
+        await update.message.reply_text('Staat genoteerd! 🧙‍♂️ Succes! 💖 \n_+1 punt_', parse_mode="Markdown")
+    else:
+        responses = [
+            'Staat genoteerd! ✍️ \n_+1 punt_',
+            'Staat genoteerd! 📝 \n_+1 punt_',
+            'Staat genoteerd! 📋 \n_+1 punt_',
+            'Staat genoteerd! ✒️ \n_+1 punt_',
+            'Staat genoteerd! 🖊️ \n_+1 punt_',
+            'Staat genoteerd! ✏️ \n_+1 punt_'
+        ]
+        reply = random.choice(responses)
+        await update.message.reply_text(reply, parse_mode="Markdown")
             
 
 async def check_goal_compatibility(update, goal_text, user_message):
     messages = [
-                {"role": "system", "content": "Controleer of een bericht zou kunnen rapporteren over het succesvol uitvoeren van een gesteld doel. Antwoord alleen met 'Ja' of 'Nee'."},
+                {"role": "system", "content": "Controleer of een bericht zou kunnen rapporteren over het succesvol uitvoeren van een gesteld doel. Zijn doel en bericht compatibel met elkaar? Antwoord alleen met 'Ja' of 'Nee'."},
                 {"role": "user", "content": f"Het gestelde doel is: {goal_text} En het bericht is: {user_message}"}
             ]
     assistant_response = await send_openai_request(messages, temperature=0.1)
@@ -740,6 +737,20 @@ def check_live_engagement(cursor, user_id, chat_id, special_type=None):
     return live_engagement
 
 
+# Assistant_response == 'Meta'  (goal_text contains empty string if the user doesn't have one)
+async def handle_meta_remark(update, context, user_id, chat_id, goal_text):
+    print("👀👀👀 Inside handle_meta_remark")
+    # user_has_goal == True
+    # if not goal_text:
+    #     user_has_goal = False
+    user_message = update.message.text
+    bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
+    messages = await prepare_openai_messages(update, user_message, 'meta', goal_text, bot_last_response)
+    assistant_response = await send_openai_request(messages)
+    await update.message.reply_text(assistant_response)
+    
+
+
 # Assistant_response == 'Overig'  
 async def handle_unclassified_mention(update):
     user_id = update.effective_user.id
@@ -749,7 +760,7 @@ async def handle_unclassified_mention(update):
     goal_text = goal_text if goal_text else None
     bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
     
-    messages = prepare_openai_messages(update, user_message, 'other', goal_text, bot_last_response)
+    messages = await prepare_openai_messages(update, user_message, 'other', goal_text, bot_last_response)
     assistant_response = await send_openai_request(messages, "gpt-4o")
     await update.message.reply_text(assistant_response)
     
@@ -1050,23 +1061,41 @@ def fetch_score(update):
         cursor.close()
         conn.close() 
 
-def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
+async def prepare_openai_messages(update, user_message, message_type, goal_text=None, bot_last_response=None):
     # Define system messages based on the message_type
     first_name = update.effective_user.first_name
     if message_type == 'classification':
         print("system prompt: classification message")
-        system_message = (
-            "Jij classificeert een berichtje van een gebruiker in een Telegramgroep "
-            "in een van de volgende drie groepen: Doelstelling, Klaar of Overig. "
-            "Elk bericht waaruit blijkt dat de gebruiker van plan is om iets (specifieks) te gaan doen vandaag, "
-            "is een 'Doelstelling'. Als de gebruiker rapporteert dat het ingestelde doel met succes is afgerond, "
-            "dan is dat 'Klaar'. Alle andere gevallen zijn 'Overig'. Antwoord alleen met 'Doelstelling', 'Klaar' of 'Overig'."
-        )
+        system_message = system_message = """
+        # Opdracht
+        Jij bent een bot in een telegramgroep over het samen stellen en behalen van doelen. 
+        Je classificeert een berichtje van een gebruiker in een van de volgende vier categorieën: 
+        Doelstelling, Klaar, Meta of Overig.
+
+        ## Doelstelling
+        Elk bericht waaruit blijkt dat de gebruiker van plan is om iets (specifieks) te gaan doen vandaag.
+
+        ## Klaar
+        Als de gebruiker rapporteert dat hun ingestelde doel met succes is afgerond, zoals: 'klaar!', 
+        'Gelukt!', of, als hun doel bijvoorbeeld was om de afwas te doen: 'het afdruiprekje is vol'. 
+
+        ## Meta
+        Als de gebruiker een vraag stelt over jou zelf als bot of over de groep. Voorbeelden van meta-vragen: 
+        'Wie heeft de meeste punten?', 'Waarom weet jij niks over Fitrie's doel?', of 'Wanneer krijgen we weer nieuwe boosts?'.
+
+        ## Overig
+        Alle gevallen die niet duidelijk onder bovenstaande drie groepen vallen, zijn 'Overig'. Voorbeelden van overig: 
+        'Wat vind jij van kapucijners?', of 'Ik heb heel veel zin in m'n avondeten.', of: 'Wie was de laatste president van Amerika?' 
+
+        # Antwoord
+        Antwoord alleen met je classificatieoordeel: 'Doelstelling', 'Klaar', 'Meta', of 'Overig'.
+        """
+
     elif message_type == 'other':
         print("system prompt: other message")
         system_message = (
             "Jij bent @TakenTovenaar_bot, de enige bot in een accountability-Telegramgroep van vrienden. "
-            "Gedraag je cheeky en mysterieus, maar streef bovenal naar waarheid. "
+            "Gedraag je cheeky, mysterieus en wijs. Streef bovenal naar waarheid, als de gebruiker een feitelijke vraag heeft. "
             "Als de gebruiker een metavraag of -verzoek heeft over bijvoorbeeld een doel stellen in de appgroep, "
             "antwoord dan alleen dat ze het command /help kunnen gebruiken. "
             "Er zijn meer commando's, maar die ken jij allemaal niet. "
@@ -1082,23 +1111,301 @@ def prepare_openai_messages(update, user_message, message_type, goal_text=None, 
         messages = [{"role": "system", "content": system_message}]
         messages.append({"role": "user", "content": f"{goal_text}"})
         return messages
+    elif message_type == 'meta':
+        print("system prompt: meta message")
+        user_id = update.effective_user.id
+        chat_id = update.effective_chat.id
+        group_name = update.effective_chat.title
+        meta_data = await collect_meta_data(user_id, chat_id)
+        print(f"\n\n⏺️⏺️⏺️Dit is de metadata in de prompt-variabele: {meta_data}\n")
+        system_message = f"""
+        # Opdracht
+
+        Jij bent @TakenTovenaar_bot in een Telegram-appgroep over het samen stellen en behalen van doelen. Je krijgt nu een berichtje van een gebruiker in de groep, die een meta-vraag heeft. De vraag gaat ofwel over jou als TakenTovenaar, ofwel over de mogelijkheden in de groep en hoe de dingen die jij als bot doet en kan allemaal werken, ofwel over de eigen voortgang van de gebruiker op dit moment. Zie de bijgeleverde Documentatie en Gebruikersgegevens, en gebruik deze om een relevante reactie te geven op de vraag van de gebruiker.
+
+
+        # Documentatie
+
+        Hier volgt alle informatie over jou als bot en je taken en functionaliteiten binnen de appgroep. 
+
+        ## Achtergrondinformatie
+
+        Je bent actief in een appgroep genaamd {group_name}.  De leden zijn vrienden van elkaar. Een van de leden is je oprichter: Ben, hij heeft jou in Python geprogrammeerd. Ben woont in Leipzig, maar komt uit Leiden. Het doel van deze groep is om elkaar te motiveren doelen te halen, via gamification, accountability  en gezonde onderlinge competitie. Leden kunnen elke week op 4 dagen naar keuze een dagdoel instellen, steeds maar 1 per dag. De leden rapporteren bij jou wanneer ze hun dagdoel instellen of hun dagdoel gehaald hebben, door op een berichtje van jou te reageren of @TakenTovenaar_bot te taggen. Maar momenteel hebben ze je dus een metavraag gesteld. Verder kunnen de groepsleden acties/engagements gebruiken op elkaar, van 3 verschillende special_types: boosts (⚡), challenges (😈), en links (🤝).
+
+
+        ## Jouw persona en taken
+
+        @TakenTovenaar_bot is cheeky, mysterieus, en bovenal wijs. Heel af en toe reageer je ook verward en slaperig: namelijk willekeurig (via random.random()) op 1% van de berichtjes die leden in de groep sturen waarbij ze jou NIET getagd hebben. Momenteel hebben ze dat juist wel gedaan, met een metavraag dus, en is je doel vooral om ze zo beknopt mogelijk te assisteren bij hun vraag.
+
+        ## Beschikbare commands
+
+        Naast het stellen van open vragen, kunnen de leden ook verschillende /commands sturen. Hier volgen alle opties.
+
+        ### /start command
+        async def start_command(update, context):
+                await update.message.reply_text('Hoi! 👋🧙‍♂️\n\nIk ben Taeke Toekema Takentovenaar. Stuur mij berichtjes, bijvoorbeeld om je dagdoel in te stellen of te voltooien, of me te vragen waarom bananen krom zijn. Antwoord op mijn berichten of tag me, bijvoorbeeld zo:\n\n"@TakenTovenaar_bot ik wil vandaag 420 gram groenten eten" \n\nDruk op >> /help << voor meer opties.')
+
+        ### /help command
+         help_message = (
+             '*Dit zijn de beschikbare commando\'s*\n'
+             '👋 /start - Begroeting\n'
+             '❓/help - Dit lijstje\n'
+             '📊 /stats - Je persoonlijke stats\n'
+             '🤔 /reset - Pas je dagdoel aan\n'
+             '🗑️ /wipe - Wis je gegevens in deze chat\n'
+             '🎒 /inventaris - Acties paraat?\n'
+             '🏹 /acties - Uitleg over acties\n'
+             '💭 /filosofie - Laat je inspireren'
+         )
+
+        ### /stats command
+        Statistieken van <user>🔸
+        🏆 Score: <score> punten
+        🎯 Doelentotaal: <total_goals>
+        ✅ Voltooid: <completed_goals> (<completion_rate:.1f>)
+        📅 Dagdoel: ingesteld om <formatted_set_time> <emoji_string_of_pending_engagements> /OF: Dagdoel: nog niet ingesteld /OF: Dagdoel: voltooid om <completion_time>:
+        📝 <today_goal_text> (IF they've set a goal today)
+
+        ### /reset command
+        #Reset the user's goal status, subtract 1 point, and clear today's goal text
+        cursor.execute('''
+                       UPDATE users
+                       SET today_goal_status = 'not set',
+                       set_time = NULL,
+                       score = score - 1,
+                       today_goal_text = '',
+                       total_goals = total_goals - 1
+                       WHERE user_id = %s AND chat_id = %s
+                       ''', (user_id, chat_id))
+
+        ### /wipe command
+        De gebruiker kan niet per ongeluk met één klik z'n voortgang wissen. Na het wipe-command volgt eerst een vraag om bevestiging.
+            if user_response == 'JA':  
+                conn = get_database_connection()
+                cursor = conn.cursor()
+                try:
+                    cursor.execute('DELETE FROM engagements WHERE engager_id = %s AND chat_id = %s', (user_id, chat_id))
+                    cursor.execute('DELETE FROM engagements WHERE engaged_id = %s AND chat_id = %s', (user_id, chat_id))
+                    cursor.execute('DELETE FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
+
+        ### /inventory command
+                   # Define a dictionary to map items to their corresponding emojis
+                   emoji_mapping = dict.:
+                       "boosts": "⚡",
+                       "challenges": "😈",
+                       "links": "🤝"
+                   
+                   inventory_text = "\n".join(
+                       f"emoji_mapping to get the item and corresponding count"
+                       for item, count in inventory.items()
+                   )
+                   await update.message.reply_text(f"*Acties van {first_name}*\n<inventory_text>", parse_mode="Markdown")
+
+        ### /acties command
+        acties_message = (
+            '*Alle beschikbare acties* 🧙‍♂️\n'
+            '⚡ */boost* - Boost andermans doel, verhoog de inzet!\n\n'
+            '😈 */challenge* - Daag iemand uit om iets specifieks te doen."\n\n'
+            '🤝 */link* - Verbind je lot met een ander... \n\n'
+            '*Zo zet je ze in*\n'
+            'Gebruik je actie door met het passende commando op een berichtje van je doelwit '
+            'te reageren, of hen na het commando te taggen:\n\n'
+            '- _/boost @Willem_\n\n'
+            '- _/challenge @Josefietje om voor 11u weer thuis te zijn voor de koffie_\n\n'
+            'Druk op >> /details << voor meer info over acties.\n\n'
+
+        ### /details
+        details_message = (
+            '*Extra uitleg over de acties* 🧙‍♂️\n\n'
+            '⚡ *Boost* je andermans doel, dan krijgen jij en je doelwit *+1* punt als ze het halen.\nHalen zij hun doel die dag niet, dan krijg jij je boost terug.\n\n'
+            '😈 *Challenge* iemand om iets specifieks te doen vandaag. Jij krijgt *+1* punt zodra de uitdaging geaccepteerd wordt, en zij overschrijven hun dagdoel (als ze dat '
+            'al ingesteld hadden). Bij voltooiing krijgen zij *+2* punten. Als je met je challenge niemand tagt of niemands berichtje beantwoordt, stuur je een open uitdaging. Die kan kan dan door iedereen '
+            'worden geaccepteerd.\nWordt je uitdaging niet geaccepteerd dan kun je hem terugtrekken, of wachten, dan krijg je hem einde dag vanzelf weer terug.\n\n '
+            '🤝 *Link* jouw doel met dat van een ander. Nu moeten jullie allebei je dagdoel halen om *+2* punten bonus pp te verdienen.\nLukt dit '
+            'een van beiden niet, betekent dat *-1* punt voor jou (en voor hen geen bonus).\n\n'
+        )
+
+        ### /filosofie
+        Als de gebruiker vandaag nog geen doel heeft ingesteld, krijgen ze een:
+        philosophical_message = get_random_philosophical_message(), uit een verzameling van ~30 favoriete quotes en lyrics van Ben.
+        Als de gebruiker vandaag al wel een doel heeft ingesteld, krijgen ze een custom-reactie van gpt-4o, op basis van hun doel:
+        (f"Mijn grootvader zei altijd:\n✨_<grandfather_quote>_ 🧙‍♂️✨", parse_mode="Markdown")
+
+        
+        ## Databases
+        
+        Dit zijn momenteel de 4 databases die per chat onderhouden worden: 
+        ### users table:
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT,
+                chat_id BIGINT,
+                total_goals INTEGER DEFAULT 0,
+                completed_goals INTEGER DEFAULT 0,
+                score INTEGER DEFAULT 0,
+                today_goal_status TEXT DEFAULT 'not set', -- either 'set', 'not set', or 'Done at TIMESTAMP'
+                set_time TIMESTAMP,       
+                today_goal_text TEXT DEFAULT '',
+                live_challenge TEXT DEFAULT '<dictrionary>',
+                inventory JSONB DEFAULT '"boosts": 2, "challenges": 2, "links": 2',       
+                PRIMARY KEY (user_id, chat_id)
+            )
+        ''')
+
+        ### bot table:
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS bot_status (
+            last_reset_time TIMESTAMP DEFAULT %s
+            )
+        ''', (two_am_last_night,))
+
+        ### engagements table:
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS engagements (
+            id BIGSERIAL PRIMARY KEY,
+            engager_id BIGINT NOT NULL,
+            engaged_id BIGINT,
+            chat_id BIGINT NOT NULL,
+            special_type TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT DEFAULT 'live', -- either 'pending', 'live', 'archived_done' or 'archived_unresolved'
+            UNIQUE (engager_id, engaged_id, special_type, chat_id),
+            FOREIGN KEY (engager_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
+            FOREIGN KEY (engaged_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE
+        );
+        CREATE UNIQUE INDEX IF NOT EXISTS unique_active_engagements
+        ON engagements(engager_id, engaged_id, special_type, chat_id)
+        WHERE status IN ('live', 'pending');               
+
+        ''')
+
+        ### goal history table:
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS goal_history (
+            id BIGSERIAL PRIMARY KEY,
+            user_id BIGINT,
+            chat_id BIGINT,
+            goal_text TEXT NOT NULL,
+            completion_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            goal_type TEXT NOT NULL DEFAULT 'personal', -- 'personal' or 'challenges'
+            challenge_from BIGINT,  -- NULL for personal goals, user_id of challenger for challenges
+            FOREIGN KEY (user_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
+            FOREIGN KEY (challenge_from, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE
+        );
+        ''')
+
+
+        # Gebruikersgegevens
+
+        Hier volgen alle gegevens die zojuist met database queries zijn opgehaald over de stand van zaken in deze appgroep, met name voor {first_name}:
+    
+        {meta_data}  
+
+        # Je antwoord nu
+        Houd het kort en to-the-point. Geen lange teksten dus, zodat de chat opgeruimd blijft, groet de gebruiker dus niet, maar kom meteen ter zake. Verwerk altijd een 🧙‍♂️-emoji in je antwoord. 
+        Als {first_name} een vraag heeft over de scores van anderen, wees dan geheimzinnig. Licht een tipje van de sluier op, maar geef niet alles prijs.
+        """
  
     messages = [{"role": "system", "content": system_message}]        
     # Include the goal text if available
     if goal_text:
         print(f"user prompt: Het ingestelde doel van {first_name} is: {goal_text}")
-        messages.append({"role": "user", "content": f"Het ingestelde doel van {first_name} is: {goal_text}"})
+        messages.append({"role": "user", "content": f"# Het ingestelde doel van de gebruiker\n{first_name}'s doel is: {goal_text}"})
     
     # Include the user_message, confused bot gets less info
     if message_type == 'sleepy':
         user_content = user_message
     else:
-        user_content = f"Een berichtje van {first_name}: {user_message}"
+        user_content = f"# Het berichtje van de gebruiker\n{first_name} zegt: {user_message}"
     if bot_last_response:
         user_content += f" (Reactie op: {bot_last_response})"
     print(f"user prompt: {user_content}")
     messages.append({"role": "user", "content": user_content})
     return messages
+
+
+async def collect_meta_data(user_id, chat_id):
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+
+        # 1. Query to fetch user stats from the users table
+        cursor.execute('''
+            SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text, inventory
+            FROM users
+            WHERE user_id = %s AND chat_id = %s;
+        ''', (user_id, chat_id))
+        user_data = cursor.fetchone()
+        
+        if user_data:
+            total_goals, completed_goals, score, today_goal_status, today_goal_text, inventory = user_data
+        else:
+            return "No user data found."
+
+        # 2. Query to get live engagements (like challenges, links, boosts) for the user
+        cursor.execute('''
+            SELECT engager_id, special_type, status
+            FROM engagements
+            WHERE engaged_id = %s AND chat_id = %s AND status IN ('live', 'pending');
+        ''', (user_id, chat_id))
+        live_engagements = cursor.fetchall()
+
+        # 3. Query to get the last reset time from the bot_status table
+        cursor.execute('''
+            SELECT last_reset_time
+            FROM bot_status;
+        ''')
+        last_reset_time = cursor.fetchone()[0]
+
+        # 4. Query to get goal history for the user
+        cursor.execute('''
+            SELECT goal_text, completion_time, goal_type, challenge_from
+            FROM goal_history
+            WHERE user_id = %s AND chat_id = %s
+            ORDER BY completion_time DESC
+            LIMIT 5;
+        ''', (user_id, chat_id))
+        recent_goals = cursor.fetchall()
+
+        # 5. Query to rank all users by score in this chat
+        cursor.execute('''
+            SELECT user_id, score
+            FROM users
+            WHERE chat_id = %s
+            ORDER BY score DESC;
+        ''', (chat_id,))
+        score_ranking = cursor.fetchall()
+
+        # Find the current user's rank
+        user_rank = None
+        for rank, (uid, score) in enumerate(score_ranking, start=1):
+            if uid == user_id:
+                user_rank = rank
+                break
+
+        # Construct a meta-data dictionary
+        meta_data = {
+            "total_goals": total_goals,
+            "completed_goals": completed_goals,
+            "score": score,
+            "today_goal_status": today_goal_status,
+            "today_goal_text": today_goal_text,
+            "inventory": inventory,
+            "live_engagements": live_engagements,
+            "last_reset_time": last_reset_time,
+            "recent_goals": recent_goals,
+            "score_ranking": score_ranking,
+            "user_rank": user_rank
+        }
+        print(f"\n\n⏺️⏺️⏺️Dit is de metadata in de collect-functie: {meta_data}\n")
+        return meta_data
+
+    except Exception as e:
+        print(f"Error collecting meta data: {e}")
+        return None
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # Function to update user goal text to present or past tense in the database when Doelstelling or Klaar 
@@ -1229,9 +1536,9 @@ def get_random_philosophical_message():
             "you're only looking for one of them. When you go looking for anything at all, "
             "your chances of finding it are very good. Because, of all the things in the world, "
             "you're sure to find some of them",
-            "Je bent wat je eet",
+            "Je kan het best, de tijd gaat met je mee",
             "If the human brain were so simple that we could understand it, we would be so simple that we couldn't",       
-            "Believe in yourself",  
+            "Ik hoop maar dat er roze koeken zijn",  
             "Hoge loofbomen, dik in het blad, overhuiven de weg",   
             "It is easy to find a logical and virtuous reason for not doing what you don't want to do",  
             "Our actions are like ships which we may watch set out to sea, and not know when or with what cargo they will return to port",
@@ -1242,15 +1549,18 @@ def get_random_philosophical_message():
             "me als doel in de Telegramgroep, en dan ben ik misschien wat gemotiveerder om het te doen xx 🙃",
             "All evils are due to a lack of Telegram bots",
             "Art should disturb the comfortable, and comfort the disturbed",
-            "Genius is one per cent inspiration, ninety-nine per cent perspiration",
+            "Begin de dag met tequila",
             "Don't wait. The time will never be just right",
             "If we all did the things we are capable of doing, we would literally astound ourselves",
-            "Reflect on your present blessings, of which every woman has many; not on your past misfortunes, of which all men have some",
-            "There's power in looking silly and not caring that you do", # Message 20
+            "There's power in looking silly and not caring that you do",    # Message 20
             "...",
-            "Een goed begin is het halve werk",
-            "De tering... naar! Daenerys zet in. \n(raad als eerste het Nederlandse spreekwoord waarvan dit is afgeleid, en win 1 punt)", # Message 23
-            "Te laat, noch te vroeg, arriveert (n)ooit de takentovenaar" # Message 24
+            "Een goed begin is de halve dwerg",
+            "De tering... naar! Daenerys zet in. \n(raad het Nederlandse spreekwoord waarvan dit is afgeleid, en win 1 punt)",  # Message 23
+            "En ik lach in mezelf want de sletten ik breng",
+            "Bij nader inzien altijd achteraf",
+            "Sometimes we live no particular way but our own",  # Message 26
+            "If it is to be said, so it be, so it is",
+            "Te laat, noch te vroeg, arriveert (n)ooit de takentovenaar"    # Message 28
         ]
     return random.choice(philosophical_messages)
 
@@ -1301,7 +1611,7 @@ async def analyze_bot_reply(update, context):
         return
     try:
         # Prepare and send OpenAI messages with bot_last_response
-        messages = prepare_openai_messages(
+        messages = await prepare_openai_messages(
             update, 
             user_message, 
             'classification', 
@@ -1322,12 +1632,17 @@ async def analyze_bot_reply(update, context):
             # once every 30 times (3,33%s)    
             else:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
+        if assistant_response == 'Doelstelling' and has_goal_today(user_id, chat_id):
+            await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
         elif assistant_response == 'Doelstelling':
             await handle_goal_setting(update, user_id, chat_id)
             print("analyze_bot_reply > handle_goal_setting")
         elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
             await handle_goal_completion(update, context, user_id, chat_id, goal_text)
             print("analyze_bot_reply > handle_goal_completion")
+        elif assistant_response == 'Meta':
+            await handle_meta_remark(update, context, user_id, chat_id, goal_text)
+            print("analyze_bot_reply > handle_meta_remark")   
         else:
             await handle_unclassified_mention(update)
             print("analyze_bot_reply > handle_unclassified_mention")
@@ -1352,7 +1667,7 @@ async def analyze_bot_mention(update, context):
         goal_text=goal_text if goal_text else None
 
         # Prepare and send OpenAI messages
-        messages = prepare_openai_messages(update, user_message, message_type='classification', goal_text=goal_text)
+        messages = await prepare_openai_messages(update, user_message, message_type='classification', goal_text=goal_text)
         print(messages)
         assistant_response = await send_openai_request(messages, temperature=0.1)
         print(f"analyze_bot_mention > classification: {assistant_response}")
@@ -1374,6 +1689,8 @@ async def analyze_bot_mention(update, context):
         elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
             await handle_goal_completion(update, context, user_id, chat_id, goal_text)
             print("analyze_bot_mention > handle_goal_completion")
+        elif assistant_response == 'Meta':
+            await handle_meta_remark(update, context, user_id, chat_id, goal_text)
         else:
             await handle_unclassified_mention(update)
             print("analyze_bot_mention > unclassified_mention")
@@ -1413,7 +1730,7 @@ async def handle_regular_message(update, context):
     except Exception as e:
         print(f"Error reacting to message: {e}")
     if len(user_message) > 11 and random.random() < 0.015:
-        messages = prepare_openai_messages(update, user_message, 'sleepy')
+        messages = await prepare_openai_messages(update, user_message, 'sleepy')
         assistant_response = await send_openai_request(messages, "gpt-4o")
         await update.message.reply_text(assistant_response)
     # Random plek om de bot impromptu random berichtjes te laten versturen huehue
@@ -1730,10 +2047,9 @@ async def scheduled_daily_reset(context_or_application):
     conn = get_database_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT chat_id FROM users")
+    chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
     cursor.close()
     conn.close()
-    chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
-    
     for chat_id in chat_ids:
         await reset_goal_status(bot, chat_id)
 
