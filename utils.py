@@ -5,6 +5,8 @@ import json, asyncio, re, random
 from telegram import Update
 from telegram.ext import CallbackContext, ContextTypes
 
+from handlers.weekly_poll import retrieve_poll_results
+
 
 # First orchestration: function to analyze any chat message, and check whether it replies to the bot, mentions it, or neither
 async def analyze_message(update, context):
@@ -746,7 +748,7 @@ async def handle_meta_remark(update, context, user_id, chat_id, goal_text):
     user_message = update.message.text
     bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
     messages = await prepare_openai_messages(update, user_message, 'meta', goal_text, bot_last_response)
-    assistant_response = await send_openai_request(messages)
+    assistant_response = await send_openai_request(messages, 'gpt-4o')
     await update.message.reply_text(assistant_response)
     
 
@@ -1226,10 +1228,8 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         )
 
         ### /filosofie
-        Als de gebruiker vandaag nog geen doel heeft ingesteld, krijgen ze een:
-        philosophical_message = get_random_philosophical_message(), uit een verzameling van ~30 favoriete quotes en lyrics van Ben.
-        Als de gebruiker vandaag al wel een doel heeft ingesteld, krijgen ze een custom-reactie van gpt-4o, op basis van hun doel:
-        (f"Mijn grootvader zei altijd:\n✨_<grandfather_quote>_ 🧙‍♂️✨", parse_mode="Markdown")
+        Als de gebruiker vandaag nog geen doel heeft ingesteld, krijgen ze een 'random_philosophical_message()', uit een verzameling van ~30 favoriete quotes van Ben.
+        Als de gebruiker vandaag al wel een doel heeft ingesteld, krijgen ze een custom-reactie van TakenTovenaars grootvader, op basis van hun doel.
 
         
         ## Databases
@@ -1302,13 +1302,13 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         {meta_data}  
 
         # Je antwoord nu
-        Houd het kort en to-the-point. Geen lange teksten dus, zodat de chat opgeruimd blijft, groet de gebruiker dus niet, maar kom meteen ter zake. Verwerk altijd een 🧙‍♂️-emoji in je antwoord. 
+        Houd het kort en to-the-point. Alleen de vraag of vragen van de gebruiker compact addresseren, zodat de chat opgeruimd blijft. Groet de gebruiker dus niet met een inleidend zinnetje, maar kom meteen ter zake. Verwerk altijd een 🧙‍♂️-emoji in je antwoord. 
         Als {first_name} een vraag heeft over de scores van anderen, wees dan geheimzinnig. Licht een tipje van de sluier op, maar geef niet alles prijs.
         """
  
     messages = [{"role": "system", "content": system_message}]        
     # Include the goal text if available
-    if goal_text:
+    if goal_text and message_type != 'meta':
         print(f"user prompt: Het ingestelde doel van {first_name} is: {goal_text}")
         messages.append({"role": "user", "content": f"# Het ingestelde doel van de gebruiker\n{first_name}'s doel is: {goal_text}"})
     
@@ -1711,6 +1711,7 @@ async def analyze_regular_message(update, context):
         return
     await handle_regular_message(update, context)
     print("analyze_regular_message > handle_regular_message")
+
     
 async def handle_regular_message(update, context):
     user_id = update.effective_user.id
@@ -1931,6 +1932,14 @@ async def handle_regular_message(update, context):
             if 'challenges' in user_message:
                 await giv_specials(update, context, 'challenges')            
                 return
+            
+    elif user_message == 'resultatenp0llx':
+        if await check_chat_owner(update, context):
+            chat_id = update.effective_chat.id
+            await retrieve_poll_results(update, context)
+
+
+
         
 async def giv_specials(update, context, special_type):
     try:

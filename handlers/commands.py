@@ -9,7 +9,7 @@ async def start_command(update, context):
 
 async def help_command(update, context):
     help_message = (
-        '*Dit zijn de beschikbare commando\'s*\n'
+        '*Dit zijn de beschikbare commando\'s* 🧙‍♂️\n'
         '👋 /start - Begroeting\n'
         '❓/help - Dit lijstje\n'
         '📊 /stats - Je persoonlijke stats\n'

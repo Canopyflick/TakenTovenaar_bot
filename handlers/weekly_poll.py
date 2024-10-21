@@ -1,5 +1,4 @@
-﻿from utils import check_chat_owner
-from datetime import timedelta, datetime
+﻿from datetime import timedelta, datetime
 from pydantic import BaseModel
 from TelegramBot_Takentovenaar import client, get_first_name, get_database_connection
 from telegram import Update
@@ -8,6 +7,7 @@ import asyncio, re
 
 async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
+    from utils import check_chat_owner
     if await check_chat_owner(update, context):
         await create_weekly_goals_poll(context, chat_id)
     else:
@@ -135,6 +135,8 @@ async def prepare_weekly_goals_poll(chat_id):
 
 async def create_weekly_goals_poll(context, chat_id):
     try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
         print(f"\n\n|||||||||||| Creating weekly poll...\nfor chat_id     {chat_id}🧙‍♂️|||||||||||||||||||||||\n")            
         selected_goals = await prepare_weekly_goals_poll(chat_id)
         if selected_goals == 'too few goals this week':
@@ -150,14 +152,24 @@ async def create_weekly_goals_poll(context, chat_id):
             allows_multiple_answers=True
         )
         
-        # Store the poll in bot_data
-        context.bot_data[poll_message.poll.id] = poll_message
+        # Extract poll_id and message_id from poll_message
+        poll_id = poll_message.poll.id
+        message_id = poll_message.message_id
+
+        # Store the poll in bot_data & in database in case of bot outage
+        context.bot_data[poll_id] = poll_message
+
+        cursor.execute("""
+            INSERT INTO polls (chat_id, poll_id, message_id, created_at)
+            VALUES (%s, %s, %s, NOW())
+        """, (chat_id, poll_id, message_id))
+        conn.commit()
         
         # Schedule a job to retrieve the poll results 10 hours later
         context.job_queue.run_once(
             retrieve_poll_results,
             timedelta(minutes=600),
-            data={"chat_id": chat_id, "message_id": poll_message.message_id, "poll_id": poll_message.poll.id}
+            data={"chat_id": chat_id, "message_id": message_id, "poll_id": poll_id}
         )
         closing_time = datetime.now() + timedelta(minutes=601)
         closing_time_formatted = closing_time.strftime('%H:%M')
@@ -167,9 +179,6 @@ async def create_weekly_goals_poll(context, chat_id):
             chat_id=chat_id,
             text=f"De poll zal sluiten om: *{closing_time_formatted}* 🧙‍♂️", parse_mode = "Markdown"
         )
-        conn = get_database_connection()
-        cursor = conn.cursor()
-        conn.commit()
     except Exception as e:
         print(f"Error creating weekly goals poll: {e}")
         await context.bot.send_message(
@@ -192,28 +201,87 @@ async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     
 
-async def retrieve_poll_results(context: ContextTypes.DEFAULT_TYPE):
-    job_data = context.job.data
-    chat_id = job_data["chat_id"]
+async def retrieve_poll_results(update, context):
+    job_data = context.job.data if context.job else None
+    chat_id=None
+    poll_id = None
+    message_id = None
+    
+    # Check if job_data is available; if not, fall back to get the most recent poll
+    if job_data:
+        chat_id = job_data["chat_id"]
+        poll_id = job_data["poll_id"]
+        message_id = job_data["message_id"]
+    else:
+        # Fallback to retrieve poll data from the database
+        try:
+            conn = get_database_connection()
+            cursor = conn.cursor()
+            chat_id = update.effective_chat.id
+
+            cursor.execute("""
+                SELECT poll_id, message_id FROM polls
+                WHERE chat_id = %s
+                ORDER BY created_at DESC
+                LIMIT 1
+            """, (chat_id,))
+            result = cursor.fetchone()
+            if result:
+                poll_id, message_id = result
+            else:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="P0lll kwijt... 🐛🧙‍♂️"
+                )
+                return
+        except Exception as e:
+            print(f"Error retrieving poll: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+    # Check if the poll has already been processed
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT processed FROM polls WHERE poll_id = %s
+        """, (poll_id,))
+        result = cursor.fetchone()
+        if result and result[0]:  # If processed is True
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="_(de pollresultaten zijn eerder al verwerkt 🧙‍♂️)_", parse_mode = "Markdown"
+            )
+            return
+    except Exception as e:
+        print(f"Error checking poll processed status: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+    
+    # Notify users that the poll is closing
     await context.bot.send_message(
-    chat_id=chat_id,
-    text="Laatste kans om te stemmen. De poll gaat over 1 minuut sluiten 🧙‍♂️")
-    await asyncio.sleep(70)
+        chat_id=chat_id,
+        text="Laatste kans om te stemmen. De poll gaat over 1 minuut sluiten 🧙‍♂️"
+    )
+    await asyncio.sleep(65)
     await context.bot.send_message(
-    chat_id=chat_id,
-    text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen 🧙‍♂️")
+        chat_id=chat_id,
+        text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen 🧙‍♂️"
+    )
     asyncio.sleep(2)
     await context.bot.send_message(
-    chat_id=chat_id,
-    text="😳")
-    poll_id = job_data["poll_id"]
-    
-    # Fetch the poll from bot_data
-    poll = context.bot_data.get(poll_id)
-    if not poll:
+        chat_id=chat_id,
+        text="😳"
+    )
+    # Stop the poll and retrieve results
+    try:
+        poll = await context.bot.stop_poll(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        print(f"Error stopping the poll: {e}")
         await context.bot.send_message(
             chat_id=chat_id,
-            text="Poll results not found 🐛🧙‍♂️"
+            text="Poll kwijt 🐛🧙‍♂️"
         )
         return
 
@@ -239,12 +307,25 @@ async def retrieve_poll_results(context: ContextTypes.DEFAULT_TYPE):
     # Get a list of unique voter counts in descending order
     unique_voter_counts = sorted({opt.voter_count for opt in sorted_options}, reverse=True)
 
-
     # Try including up to top 3 voter counts
     top_results = get_top_results(unique_voter_counts, 3)
     print(f"these are the top results: {top_results}")
 
     await award_poll_rewards(context, chat_id, top_results)
+    
+    # After processing, update the poll as processed
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE polls SET processed = TRUE WHERE poll_id = %s
+        """, (poll_id,))
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating poll processed status: {e}")
+    finally:
+        cursor.close()
+        conn.close()
 
         
 async def award_poll_rewards(context, chat_id, top_results):
@@ -299,7 +380,6 @@ async def award_poll_rewards(context, chat_id, top_results):
             ],
             response_format=GoalMapping,
         )
-
 
         response = completion.choices[0].message.parsed
         print(f"\n!!RESPONSE!!:\n {response}")
@@ -431,6 +511,23 @@ async def fetch_goals_history(chat_id):
         cursor.close()
         conn.close()
     return results
+
+
+async def get_most_recent_poll(context, chat_id):
+    try:
+        # Fetch recent messages in the chat (limit to, e.g., 100 recent messages)
+        recent_messages = await context.bot.get_chat_history(chat_id, limit=200)
+
+        # Iterate through messages to find the most recent poll
+        for message in recent_messages:
+            if message.poll:  # Check if the message contains a poll
+                return message.poll, message.message_id  # Return poll and its message_id
+            
+        return None, None  # No poll found
+    except Exception as e:
+        print(f"Error fetching most recent poll: {e}")
+        return None, None
+
 
 
 dummy_goals_history = [

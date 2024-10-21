@@ -171,7 +171,19 @@ try:
     );
     ''')
     conn.commit()
-
+    
+    #5 polls table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS polls (
+        chat_id BIGINT NOT NULL,
+        poll_id VARCHAR(255) NOT NULL,
+        message_id BIGINT NOT NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        processed BOOLEAN NOT NULL DEFAULT FALSE,
+        PRIMARY KEY (poll_id)
+    );
+    ''')
+    conn.commit()
 
 
 except Exception as e:
