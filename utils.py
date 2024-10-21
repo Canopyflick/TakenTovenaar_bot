@@ -1167,7 +1167,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         📝 <today_goal_text> (IF they've set a goal today)
 
         ### /reset command
-        #Reset the user's goal status, subtract 1 point, and clear today's goal text
+        Resets the user's goal status, subtracts 1 point, and clears today's goal text
         cursor.execute('''
                        UPDATE users
                        SET today_goal_status = 'not set',
@@ -1189,7 +1189,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
                     cursor.execute('DELETE FROM users WHERE user_id = %s AND chat_id = %s', (user_id, chat_id))
 
         ### /inventory command
-                   # Define a dictionary to map items to their corresponding emojis
+                   Define a dictionary to map items to their corresponding emojis
                    emoji_mapping = dict.:
                        "boosts": "⚡",
                        "challenges": "😈",

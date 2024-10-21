@@ -282,13 +282,13 @@ async def setup(application):
 
         from handlers.weekly_poll import scheduled_weekly_poll
         # Schedule the weekly poll job 
-        poll_time = time(hour=8, minute=59)  # +2hs from CET?
+        poll_time = time(hour=7, minute=0)  # +2hs from CET?
         job_queue.run_daily(
             scheduled_weekly_poll, 
             time=poll_time, 
-            days=(0,)  # Monday
+            days=(5,)  # Saturday
         )
-        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Monday")
+        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday")
 
         from utils import get_last_reset_time
         # Check if reset is needed on startup
