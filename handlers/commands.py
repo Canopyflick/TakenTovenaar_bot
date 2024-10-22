@@ -17,6 +17,7 @@ async def help_command(update, context):
         '🗑️ /wipe - Wis je gegevens in deze chat\n'
         '🎒 /inventaris - Acties paraat?\n'
         '🏹 /acties - Uitleg over acties\n'
+        '🤬 /fittie - Maak bezwaar\n'
         '💭 /filosofie - Laat je inspireren'
     )
     await update.message.reply_text(help_message, parse_mode="Markdown")
@@ -52,7 +53,7 @@ async def stats_command(update, context):
         conn = get_database_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text
+            SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text, weekly_goals_left
             FROM users
             WHERE user_id = %s AND chat_id = %s
         ''', (user_id, chat_id))
@@ -66,14 +67,15 @@ async def stats_command(update, context):
         conn.close()
 
     if result:
-        total_goals, completed_goals, score, today_goal_status, today_goal_text = result
+        total_goals, completed_goals, score, today_goal_status, today_goal_text, weekly_goals_left = result
         completion_rate = (completed_goals / total_goals * 100) if total_goals > 0 else 0
 
         stats_message = f"*Statistieken van {escaped_first_name}*\n"
-        stats_message += f"🏆 Score: {score} punten\n"
-        stats_message += f"🎯 Doelentotaal: {total_goals}\n"
-        stats_message += f"✅ Voltooid: {escape_markdown_v2(str(completed_goals))} {escape_markdown_v2(f'({completion_rate:.1f}%)')}\n"
-                            
+        stats_message += f"🏆 Score: {score} punt{'en' if score != 1 else ''}\n"
+        # stats_message += f"🎯 Doelentotaal: {total_goals}\n"
+        stats_message += f"✅ Voltooid: {escape_markdown_v2(str(completed_goals))} doel{'en' if completed_goals != 1 else ''} {escape_markdown_v2(f'({completion_rate:.1f}%)')}\n"
+        stats_message += f"⏳ Deze week: nog {weekly_goals_left} doel{'en' if weekly_goals_left != 1 else ''}\n"  
+        
         # Check for the three possible goal statuses
         if today_goal_status == 'set':
             conn = get_database_connection()
@@ -84,37 +86,38 @@ async def stats_command(update, context):
             if set_time:
                 set_time = set_time[0]
                 formatted_set_time = set_time.strftime("%H:%M")
-            # Check if user is live engaged
-            if await fetch_live_engagements(chat_id, engaged_id = user_id):
+            # Check if user is live-engaged, linking-pending, or linking someone else, aka needs to see emojis
+            if await fetch_live_engagements(chat_id, engaged_id=user_id) or "🤝" in await fetch_live_engagements(chat_id, 'pending', engager_id=user_id, engaged_id=user_id) or "🤝" in await fetch_live_engagements(chat_id, engager_id = user_id):
                 print(f"user_id: {user_id}")
-                escaped_emoji_string = await fetch_live_engagements(chat_id, engaged_id = user_id)
+                escaped_emoji_string = await fetch_live_engagements(chat_id, engaged_id=user_id)
                 print(f"escaped_emoji_string: {escaped_emoji_string}")
-                # this will contain challenges and links, where the user is ENGAGED 
-                escaped_pending_emojis =  await fetch_live_engagements(chat_id, status = 'pending', engaged_id = user_id)
+                # this will contain pending challenges and links, where the user is ENGAGED 
+                escaped_pending_emojis =  await fetch_live_engagements(chat_id, status='pending', engaged_id=user_id)
                 # but we want only the links
                 if "🤝" in escaped_pending_emojis:
                     escaped_combined_string = await process_emojis(escaped_emoji_string, escaped_pending_emojis)
                     print(f"FINAL STRING pff please let this ever happen: {escaped_combined_string}")
-                    stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_combined_string}\n📝 {escape_markdown_v2(today_goal_text)}"
+                    stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_combined_string}\n📝 {escape_markdown_v2(today_goal_text)}\n"
                 if "🤝" not in escaped_pending_emojis:
-                    stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}"
+                    stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}\n"
                 # And then a special treatment for the links where user is ENGAGER #7890
-                pending_emojis_2 =  await fetch_live_engagements(chat_id, status = 'pending', engager_id = user_id)
+                pending_emojis_2 =  await fetch_live_engagements(chat_id, status = 'pending', engager_id=user_id)
                 if "🤝" in pending_emojis_2:
+                    # Getting the string that shows the names of the people who you're linking
                     links_string = await get_links_engaged_names(context, user_id, cursor)
                     cursor.close()
                     escaped_links_string = escape_markdown_v2(links_string)
-                    stats_message += f"\n{escaped_links_string}"
+                    stats_message += f"{escaped_links_string}\n"
             else:
-                stats_message += f"📅 Dagdoel: ingesteld om {escape_markdown_v2(formatted_set_time)}\n📝 {escape_markdown_v2(today_goal_text)}"
+                stats_message += f"📅 Dagdoel: ingesteld om {escape_markdown_v2(formatted_set_time)}\n📝_{escape_markdown_v2(today_goal_text)}_\n"
                 
             cursor.close()
             conn.close()
         elif today_goal_status.startswith('Done'):
             completion_time = today_goal_status.split(' ')[3]  # Extracts time from "Done today at H:M"
-            stats_message += f"📅 Dagdoel: voltooid om {escape_markdown_v2(completion_time)}\n📝 ||{escape_markdown_v2(today_goal_text)}||"
+            stats_message += f"📅 Dagdoel: voltooid om {escape_markdown_v2(completion_time)}\n📝 ||{escape_markdown_v2(today_goal_text)}||\n"
         else:
-            stats_message += '📅 Dagdoel: nog niet ingesteld'
+            stats_message += '📅 Dagdoel: nog niet ingesteld\n'
         try:       
             await update.message.reply_text(stats_message, parse_mode="MarkdownV2")
         except AttributeError as e:
@@ -194,8 +197,8 @@ async def reset_command(update, context):
         # don't allow resets if challenged
         if await fetch_live_engagements(chat_id, engaged_id = user_id):
             if "😈" in await fetch_live_engagements(chat_id, engaged_id = user_id):
-                goal_text = fetch_goal_text(update, context)   
-                await update.message.reply_text(f"Challenge reeds accepted. 😈 Er is geen weg meer terug 👻🧙‍♂️\n_{goal_text}_", parse_mode = "Markdown")        
+                goal_text = fetch_goal_text(update)   
+                await update.message.reply_text(f"Challenge reeds geaccepteerd. Er is geen weg meer terug 😈👻🧙‍♂️\n_{goal_text}_", parse_mode = "Markdown")        
                 return False
         try:
             conn = get_database_connection()
@@ -207,7 +210,8 @@ async def reset_command(update, context):
                            set_time = NULL,
                            score = score - 1,
                            today_goal_text = '',
-                           total_goals = total_goals - 1
+                           total_goals = total_goals - 1,
+                           weekly_goals_left = weekly_goals_left + 1
                            WHERE user_id = %s AND chat_id = %s
                            ''', (user_id, chat_id))
             conn.commit()
@@ -354,7 +358,7 @@ async def handle_admin(update, context, type, amount=None):
                             WHERE user_id = %s AND chat_id = %s
                             ''', (amount, user_id, chat_id))
             conn.commit()
-            await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🎁🧙‍♂️\n_+{amount} punt(en) voor {first_name}_", parse_mode = "Markdown")
+            await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🎁🧙‍♂️\n_+{amount} punt{'en' if amount != 1 else ''} voor {first_name}_", parse_mode = "Markdown")
             return
         except Exception as e:
             print(f"Error updating user score handling admin: {e}")
@@ -367,7 +371,7 @@ async def handle_admin(update, context, type, amount=None):
                             WHERE user_id = %s AND chat_id = %s
                             ''', (amount, user_id, chat_id))
             conn.commit()
-            await update.message.reply_text(f"Taeke Takentovenaar grist weg 🥷\n_-{amount} punt(en) van {first_name}_", parse_mode = "Markdown")
+            await update.message.reply_text(f"Taeke Takentovenaar grist weg 🥷\n_-{amount} punt{'en' if amount != 1 else ''} van {first_name}_", parse_mode = "Markdown")
             return
         except Exception as e:
             print(f"Error updating user score handling admin: {e}")

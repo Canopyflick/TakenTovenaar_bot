@@ -5,6 +5,7 @@ from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHan
 from openai import OpenAI
 import asyncio
 from datetime import datetime, time, timedelta
+from typing import Union
 
 # Global bot instance
 global_bot: ExtBot = None
@@ -87,12 +88,13 @@ try:
         'chat_id': 'BIGINT',
         'total_goals': 'INTEGER DEFAULT 0',
         'completed_goals': 'INTEGER DEFAULT 0',
+        'weekly_goals_left': 'INTEGER DEFAULT 4', 
         'score': 'INTEGER DEFAULT 0',
         'today_goal_status': "TEXT DEFAULT 'not set'",
         'set_time': 'TIMESTAMP',  
         'today_goal_text': "TEXT DEFAULT ''",
         'live_challenge': "TEXT DEFAULT '{}'",
-        'inventory': "JSONB DEFAULT '{\"boosts\": 2, \"challenges\": 2, \"links\": 2}'",
+        'inventory': "JSONB DEFAULT '{\"boosts\": 1, \"challenges\": 1, \"links\": 1}'",
     }
 
     # Create the tables if they don't exist
@@ -103,19 +105,20 @@ try:
             chat_id BIGINT,
             total_goals INTEGER DEFAULT 0,
             completed_goals INTEGER DEFAULT 0,
+            weekly_goals_left INTEGER DEFAULT 4,       
             score INTEGER DEFAULT 0,
             today_goal_status TEXT DEFAULT 'not set', -- either 'set', 'not set', or 'Done at TIMESTAMP'
             set_time TIMESTAMP,       
             today_goal_text TEXT DEFAULT '',
             live_challenge TEXT DEFAULT '{}',
-            inventory JSONB DEFAULT '{"boosts": 2, "challenges": 2, "links": 2}',       
+            inventory JSONB DEFAULT '{"boosts": 1, "challenges": 1, "links": 1}',       
             PRIMARY KEY (user_id, chat_id)
         )
     ''')
     conn.commit()
     
     #2 bot table
-    # Calculate 2:01 AM last night to set default last_reset_time
+    # Calculate 4:01 AM last night to set that as default last_reset_time
     now = datetime.now()
     unformatted_time = now.replace(hour=2, minute=1, second=0, microsecond=0) - timedelta(days=1)
     two_am_last_night = unformatted_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -229,7 +232,17 @@ finally:
     
 
 
-async def get_first_name(context_or_bot, user_id):
+async def get_first_name(context_or_bot: Union[Bot, ExtBot, 'CallbackContext'], user_id: int) -> str:
+    """
+    Get the first name of a Telegram user.
+    
+    Args:
+        context_or_bot: The bot instance or callback context
+        user_id: Telegram user ID
+        
+    Returns:
+        str: User's first name or fallback value if error occurs
+    """
     global global_bot
     try:
         # Determine which bot instance to use
@@ -242,13 +255,14 @@ async def get_first_name(context_or_bot, user_id):
             if global_bot is None:
                 raise ValueError("No bot instance available")
             bot = global_bot
-        # Fetch the user object from the bot
-        user = await bot.get_chat(user_id)  # This gets the user object
-        return user.first_name  # Return the first name of the user
+            
+        # Get chat member info instead of using get_chat
+        chat_member = await bot.get_chat_member(user_id, user_id)
+        return chat_member.user.first_name
+        
     except Exception as e:
         print(f"Error fetching user details for user_id {user_id}: {e}")
         return "Lodewijk 🚨🐛"
-
 
 
 # Security check: am I in the chat where the bot is used?
@@ -288,17 +302,17 @@ async def setup(application):
         from utils import scheduled_daily_reset
         # Schedule the daily reset job 
         job_queue = application.job_queue
-        reset_time = time(hour=2, minute=0, second=0)
+        reset_time = time(hour=2, minute=0, second=0)   # +2hs from CET aka 4AM
         job_queue.run_daily(scheduled_daily_reset, time=reset_time)
         print(f"\nDaily reset job queue set up successfully at {reset_time}")
 
         from handlers.weekly_poll import scheduled_weekly_poll
         # Schedule the weekly poll job 
-        poll_time = time(hour=7, minute=0)  # +2hs from CET?
+        poll_time = time(hour=5, minute=16)  # +2hs from CET, aka 7AM
         job_queue.run_daily(
             scheduled_weekly_poll, 
             time=poll_time, 
-            days=(5,)  # Saturday
+            days=(6,)  # Saturday
         )
         print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday")
 
@@ -367,6 +381,8 @@ def main():
         wipe_conv_handler = create_wipe_handler()
         application.add_handler(wipe_conv_handler)
         
+
+        
         from handlers.commands import start_command, help_command, stats_command, reset_command, filosofie_command, inventory_command, acties_command, gift_command, steal_command, revert_goal_completion_command, ranking_command, boost_command, link_command, details_command
         # Bind the commands to their respective functions
         # The ones that show up in /help:
@@ -375,7 +391,7 @@ def main():
         application.add_handler(CommandHandler("stats", stats_command))
         application.add_handler(CommandHandler("reset", reset_command))
         application.add_handler(CommandHandler(["challenge", "uitdagen", "komdanjonge", "waarheiddoenofdurven"], challenge_command))
-            # wipe is in handlers/wipe_handler.py
+        # wipe is in handlers/wipe_handler.py
         application.add_handler(CommandHandler("filosofie", filosofie_command))
         application.add_handler(CommandHandler(["inventaris", "inventory"], inventory_command))
         application.add_handler(CommandHandler(["moves", "engagements", "specials", "engagement", "engoggos", "acties", "actie"], acties_command))
@@ -396,6 +412,10 @@ def main():
         from handlers.weekly_poll import receive_poll, poll_command
         application.add_handler(PollHandler(receive_poll))
         application.add_handler(CommandHandler("poll", poll_command))
+        
+        from handlers.dispute_handler import fittie_command
+        application.add_handler(CommandHandler(["fittie", "oneens", "wachteensff", "nietzosnel"], fittie_command))
+
 
   
         

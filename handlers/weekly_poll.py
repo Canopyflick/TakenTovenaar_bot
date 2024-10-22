@@ -19,11 +19,13 @@ async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def scheduled_weekly_poll(context):
+    print(f"inside the scheduler... :D")
     conn = get_database_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT DISTINCT chat_id FROM users")
     chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
     for chat_id in chat_ids:
+        print(f"chat_id: {chat_id}")
         await create_weekly_goals_poll(context, chat_id)
     cursor.close()
     conn.close()
@@ -106,9 +108,7 @@ async def prepare_weekly_goals_poll(chat_id):
             messages=[
                 {"role": "system", "content": """
                 From the provided list of completed goals, select the 10 most impressive, inspiring, or funny ones.
-                Return a JSON array of exactly 10 goals, formatted as:
-                ["goal 1", "goal 2", "goal 3", ...].
-                Ensure each goal is a direct quote from the input list."""},
+                Return a JSON array. Ensure that each goal is a direct quote from the input list."""},
                 {"role": "user", "content": goals_text}
             ],
             response_format=SimpleArray,
@@ -121,8 +121,9 @@ async def prepare_weekly_goals_poll(chat_id):
 
         # Validate we got a valid list and 8-12 goals
         if not isinstance(goals_list, list) or len(goals_list) < 8 or len(goals_list) > 12:
-            raise ValueError("Invalid response format from GPT")
-            
+            print("Invalid response format from GPT")
+            return goals[:10]
+             
         return goals_list
         
     except Exception as e:
@@ -250,7 +251,7 @@ async def retrieve_poll_results(update, context):
         if result and result[0]:  # If processed is True
             await context.bot.send_message(
                 chat_id=chat_id,
-                text="_(de pollresultaten zijn eerder al verwerkt 🧙‍♂️)_", parse_mode = "Markdown"
+                text="_🚫 de pollresultaten zijn eerder al verwerkt 🧙‍♂️_", parse_mode = "Markdown"
             )
             return
     except Exception as e:
@@ -262,17 +263,17 @@ async def retrieve_poll_results(update, context):
     # Notify users that the poll is closing
     await context.bot.send_message(
         chat_id=chat_id,
-        text="Laatste kans om te stemmen. De poll gaat over 1 minuut sluiten 🧙‍♂️"
+        text="*Laatste kans om te stemmen. De poll gaat over 1 minuut sluiten 🧙‍♂️*", parse_mode = "Markdown"
     )
     await asyncio.sleep(65)
     await context.bot.send_message(
         chat_id=chat_id,
-        text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen 🧙‍♂️"
+        text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen."
     )
     asyncio.sleep(2)
     await context.bot.send_message(
         chat_id=chat_id,
-        text="😳"
+        text="🧙‍♂️"
     )
     # Stop the poll and retrieve results
     try:
@@ -457,17 +458,24 @@ async def award_poll_rewards(context, chat_id, top_results):
             award_messages.append(award_message)
 
         # Combine the messages
-        awards_text = "🧙‍♂️🏅 *Punten zijn uitgedeeld aan de volgende vlijtige vlerkjes* \n\n" + "\n\n".join(award_messages)
+        awards_text = "*Punten zijn uitgedeeld aan de volgende vlijtige vlerkjes* 🧙‍♂️🏅\n\n" + "\n\n".join(award_messages)
 
         if challenger_names:
             if len(challenger_names) == 1:
-                honorable_mentions_text = f"🧙‍♂️🤝 *Eervolle vermelding voor uw uitstekende uitdager* \n{challenger_names[0]} 😈"
+                honorable_mentions_text = f"*Eervolle vermelding voor uw uitstekende uitdager* 🧙‍♂️🤝\n{challenger_names[0]} 😈"
             else:
-                honorable_mentions_text = "🧙‍♂️🤝 *Eervolle vermeldingen voor uw uitstekende uitdagers* \n" + ", ".join(challenger_names) + " 😈"
+                honorable_mentions_text = "*Eervolle vermeldingen voor uw uitstekende uitdagers* 🧙‍♂️🤝\n" + ", ".join(challenger_names) + " 😈"
         else:
-            honorable_mentions_text = "_Geen uitdagers om te vermelden deze keer 🧙‍♂️_"
+            honorable_mentions_text = "_(Uitdagers hadden ditmaal geen hand in de resultaten) 🧙‍♂️_"
         # Announcements, including pauses for effect
-        await asyncio.sleep(3)
+        await context.bot.send_message(chat_id=chat_id, text="...")
+        await asyncio.sleep(2)
+        await context.bot.send_message(chat_id=chat_id, text="3️⃣")
+        await asyncio.sleep(1)
+        await context.bot.send_message(chat_id=chat_id, text="2️⃣")
+        await asyncio.sleep(1)
+        await context.bot.send_message(chat_id=chat_id, text="1️⃣")
+        await asyncio.sleep(1)
         await context.bot.send_message(
         chat_id=chat_id,
         text="🎊")
@@ -488,8 +496,6 @@ async def award_poll_rewards(context, chat_id, top_results):
         print(f"Error in award_poll_rewards: {e}")
         return print(f'wh00ps')
     
-
-
 
 
 async def fetch_goals_history(chat_id):

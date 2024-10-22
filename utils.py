@@ -81,8 +81,10 @@ async def reset_goal_status(bot, chat_id):
                 if "🤝" in live_engagements or "🤝" in pending_engagements: 
                     amount = live_engagements.count("🤝")
                     amount += pending_engagements.count("🤝")
+                    amount = amount * -1
+                    escaped_amound = escape_markdown_v2(amount)
                     # different logic for links
-                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n__{amount} punten_"
+                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_{escaped_amount} punt{'en' if amount != -1 else ''}_"
                                    , parse_mode="MarkdownV2")
                     try:
                         cursor.execute('''
@@ -305,8 +307,8 @@ async def check_use_of_special(update, context, special_type):
     if await complete_new_engagement(update, engager_id, engaged_id, chat_id, special_type):    # < < < < < boosts and links go in here      
         emoji_mapping = {
             'boosts': '⚡',
-            'links': '🤝',
-            'challenges': '😈'
+            'challenges': '😈',
+            'links': '🤝'
         }
 
         # Get the emoji for the given special_type
@@ -354,6 +356,7 @@ async def check_special_balance(engager_id, chat_id, special_type):
     finally:
         cursor.close()
         conn.close() 
+        
 
 # Check if the engager already has a live or pending engage with the same user with the same special type
 async def check_identical_engagement(engager_id, engaged_id, special_type, chat_id): 
@@ -381,6 +384,27 @@ async def check_identical_engagement(engager_id, engaged_id, special_type, chat_
     finally:
         cursor.close()
         conn.close() 
+        
+
+async def fetch_weekly_goals_left(chat_id, user_id):
+    try:
+        conn = get_database_connection() 
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT weekly_goals_left FROM users
+            WHERE user_id = %s 
+            AND chat_id = %s
+        ''', (user_id, chat_id,))
+        result = cursor.fetchone()
+        weekly_goals_left = result[0]
+        conn.commit()
+        return weekly_goals_left
+    except Exception as e:
+        print (f"Error fetching weekly goal: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
 
 # Assistant_response == 'Doelstelling'          
 async def handle_goal_setting(update, user_id, chat_id):
@@ -414,7 +438,8 @@ async def handle_goal_setting(update, user_id, chat_id):
                         SET today_goal_status = 'set',
                         set_time = %s,
                         total_goals = total_goals + 1,
-                        score = score + 1
+                        score = score + 1,
+                        weekly_goals_left = weekly_goals_left -1
                         WHERE user_id = %s AND chat_id = %s
                         ''', (set_time, user_id, chat_id))
         conn.commit()
@@ -899,10 +924,13 @@ async def show_inventory(update, context):
                 "challenges": "😈",
                 "links": "🤝"
             }
+
+            # Ensure the order is maintained
+            ordered_items = ['boosts', 'challenges', 'links']
             inventory_text = "\n".join(
-                f"{emoji_mapping.get(item, '')} {item}: {count}"
-                for item, count in inventory.items()
-            )
+                f"{emoji_mapping.get(item, '')} {item}: {inventory.get(item, 0)}"
+                for item in ordered_items if item in inventory
+            )    
             await update.message.reply_text(f"*Acties van {first_name}*\n{inventory_text}", parse_mode="Markdown")
     except Exception as e:
         print(f"Error showing inventory: {e}")
@@ -1169,7 +1197,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         📝 <today_goal_text> (IF they've set a goal today)
 
         ### /reset command
-        Resets the user's goal status, subtracts 1 point, and clears today's goal text
+        Resets the user's goal status and clears today's goal text (point subtraction is net 0 impact, assuming they will set a new goal, gaining the point back)
         cursor.execute('''
                        UPDATE users
                        SET today_goal_status = 'not set',
@@ -1201,7 +1229,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
                        f"emoji_mapping to get the item and corresponding count"
                        for item, count in inventory.items()
                    )
-                   await update.message.reply_text(f"*Acties van {first_name}*\n<inventory_text>", parse_mode="Markdown")
+                   await update.message.reply_text(f"*Acties van <first_name>*\n<inventory_text>", parse_mode="Markdown")
 
         ### /acties command
         acties_message = (
@@ -1303,7 +1331,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
 
         # Je antwoord nu
         Houd het kort en to-the-point. Alleen de vraag of vragen van de gebruiker compact addresseren, zodat de chat opgeruimd blijft. Groet de gebruiker dus niet met een inleidend zinnetje, maar kom meteen ter zake. Verwerk altijd een 🧙‍♂️-emoji in je antwoord. 
-        Als {first_name} een vraag heeft over de scores van anderen, wees dan geheimzinnig. Licht een tipje van de sluier op, maar geef niet alles prijs.
+        Als {first_name} (user_id: {user_id}) een vraag heeft over de ranking, wees dan geheimzinnig. Licht een tipje van de sluier op, maar geef niet alles prijs.
         """
  
     messages = [{"role": "system", "content": system_message}]        
@@ -1459,7 +1487,7 @@ def finished_goal_today(user_id, chat_id):
 
 
 # Currently handles EITHER engager OR engaged        
-async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, engaged_id = None):
+async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, engaged_id = None, plain=False):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
@@ -1514,8 +1542,11 @@ async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, en
 
         escaped_string = escape_markdown_v2(engagement_string)
 
-        # Return the escaped engagement string
-        return escaped_string
+        # Return the (escaped) engagement string
+        if not plain:
+            return escaped_string
+        else:
+            return engagement_string
 
     except Exception as e:
         print(f"Error fetching engagements: {e}")
@@ -1621,7 +1652,11 @@ async def analyze_bot_reply(update, context):
         assistant_response = await send_openai_request(messages, temperature=0.1)
         print(f"analyze_bot_reply > classification: {assistant_response}")
         # Handle the OpenAI response
-        if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
+        goals_remaining = await fetch_weekly_goals_left(chat_id, user_id)
+        print(f'goals_remaining: {goals_remaining}')
+        if assistant_response == 'Doelstelling' and goals_remaining == 0:
+            await update.message.reply_text("🚫 Je kunt deze week geen doelen meer instellen 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown") 
+        elif assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             rand_value = random.random()
             # 4 times out of 5 (80%s)
             if rand_value < 0.80:
@@ -1632,9 +1667,11 @@ async def analyze_bot_reply(update, context):
             # once every 30 times (3,33%s)    
             else:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
-        if assistant_response == 'Doelstelling' and has_goal_today(user_id, chat_id):
+        elif assistant_response == 'Doelstelling' and has_goal_today(user_id, chat_id):
             await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
         elif assistant_response == 'Doelstelling':
+            if goals_remaining == 1:
+                await update.message.reply_text("Dit is je laatste dagdoel deze week 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
             await handle_goal_setting(update, user_id, chat_id)
             print("analyze_bot_reply > handle_goal_setting")
         elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
@@ -1931,47 +1968,150 @@ async def handle_regular_message(update, context):
                 await giv_specials(update, context, 'links')
             if 'challenges' in user_message:
                 await giv_specials(update, context, 'challenges')            
+                return       
+            
+    elif user_message.endswith('4all'):
+         if await check_chat_owner(update, context):
+            if 'boosts4all' in user_message:
+                await giv_specials(update, context, 'boosts', for_all = True)
+            if 'links4all' in user_message:
+                await giv_specials(update, context, 'links', for_all = True)
+            if 'challenges4all' in user_message:
+                await giv_specials(update, context, 'challenges', for_all = True)
+                return
+            if 'all4all':
+                await giv_specials(update, context, 'all', for_all = True)
                 return
             
     elif user_message == 'resultatenp0llx':
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
             await retrieve_poll_results(update, context)
+            
+    elif user_message == 'zondagmydude(tte)s':
+        if await check_chat_owner(update, context):
+            chat_id = update.effective_chat.id
+            await add_weekly_goals(update, chat_id)
 
 
-
-        
-async def giv_specials(update, context, special_type):
+async def add_weekly_goals(update, chat_id, amount = 4):
     try:
-        user_id = update.effective_user.id
-        first_name = update.effective_user.first_name
-        chat_id = update.effective_chat.id
-        
-        # Dynamically construct the JSON path for the special_type
-        path = '{' + special_type + '}'  # JSON path, e.g., '{boosts}'
-        
-        query = '''
-            UPDATE users
-            SET inventory = jsonb_set(
-                inventory,
-                %s,  -- The dynamic path in the JSON structure (passed as a parameter)
-                (COALESCE(inventory->>%s, '0')::int + 10)::text::jsonb  -- Update the special_type count
-            )
-            WHERE user_id = %s AND chat_id = %s
-            RETURNING inventory
-        '''
         conn = get_database_connection()
         cursor = conn.cursor()
-        # Execute the query with proper parameterization
-        cursor.execute(query, (path, special_type, user_id, chat_id))
-        
-        # Commit the transaction
+        cursor.execute("""
+            UPDATE users
+            SET weekly_goals_left = weekly_goals_left + %s
+            WHERE chat_id = %s
+        """, (amount, chat_id,))
         conn.commit()
+        print(f"Successfully added {amount} weekly goals for all users in chat {chat_id}.")
+        await update.message.reply_text("Iedereen 4 dagdoelen erbij 🧙‍♂️")
+    except Exception as e:
+        print(f"Error adding weekly goals amount: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        conn.close()
 
-        # Fetch the updated inventory result
-        updated_inventory = cursor.fetchone()
-        await update.message.reply_text(f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+10 {special_type} voor {first_name}_", parse_mode = "Markdown")
-        return updated_inventory
+        
+async def giv_specials(update, context, special_type, for_all=False):
+    try:
+        chat_id = update.effective_chat.id
+        conn = get_database_connection()
+        cursor = conn.cursor()
+
+        if for_all:
+            # Fetch all user IDs in the chat from the 'users' table
+            cursor.execute('''
+                SELECT user_id FROM users WHERE chat_id = %s
+            ''', (chat_id,))
+            user_ids = [row[0] for row in cursor.fetchall()]
+
+            # If no users are found, inform the sender
+            if not user_ids:
+                await update.message.reply_text("Geen gebruikers gevonden in deze chat 🧙‍♂️")
+                return
+
+            special_types = []
+            if special_type == 'all':
+                special_types = ['boosts', 'challenges', 'links']
+            else:
+                special_types = [special_type]
+                
+            # Dynamically construct the JSON path for the special_type
+            for special_type in special_types:
+                path = '{' + special_type + '}'
+
+                # Update inventory for all users in the chat
+                query = '''
+                    UPDATE users
+                    SET inventory = jsonb_set(
+                        inventory,
+                        %s,
+                        (COALESCE(inventory->>%s, '0')::int + 1)::text::jsonb
+                    )
+                    WHERE user_id = ANY(%s) AND chat_id = %s
+                    RETURNING user_id, inventory
+                '''
+                cursor.execute(query, (path, special_type, user_ids, chat_id))
+
+                # Fetch updated inventories
+                updated_inventories = cursor.fetchall()
+                print(f"updated inventories: {updated_inventories}")
+                
+            conn.commit()
+
+            emoji_mapping = {
+                'boosts': '⚡',
+                'challenges': '😈',
+                'links': '🤝'
+            }
+            
+            emojis = ''
+            types_message = ''
+            
+            # Get the emoji for the given special_type, then: enkelvoud
+            for special_type in special_types:
+                emoji = emoji_mapping.get(special_type, '')
+                emojis += emoji
+                special_type = special_type[:-1]
+                types_message += f"\n_+1{emoji} {special_type} voor elk_"
+
+            # Send a message to the chat
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"Taeke Takentovenaar strooit rond 🧙‍♂️" + types_message,
+                parse_mode="Markdown"
+            )
+            return
+
+        else:
+            user_id = update.effective_user.id
+            first_name = update.effective_user.first_name
+
+            # Dynamically construct the JSON path for the special_type
+            path = '{' + special_type + '}'
+
+            query = '''
+                UPDATE users
+                SET inventory = jsonb_set(
+                    inventory,
+                    %s,  -- The dynamic path in the JSON structure
+                    (COALESCE(inventory->>%s, '0')::int + 10)::text::jsonb  -- Update the special_type count
+                )
+                WHERE user_id = %s AND chat_id = %s
+                RETURNING inventory
+            '''
+            cursor.execute(query, (path, special_type, user_id, chat_id))
+            conn.commit()
+
+            # Fetch the updated inventory result
+            updated_inventory = cursor.fetchone()
+            await update.message.reply_text(
+                f"Taeke Takentovenaar deelt uit 🧙‍♂️\n_+10 {special_type} voor {first_name}_",
+                parse_mode="Markdown"
+            )
+            return updated_inventory
 
     except Exception as e:
         print(f"Error updating specials: {e}")
@@ -1980,6 +2120,7 @@ async def giv_specials(update, context, special_type):
     finally:
         cursor.close()
         conn.close()
+
         
 
 def random_emoji():

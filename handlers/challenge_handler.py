@@ -240,17 +240,19 @@ async def handle_challenge_response(update, context):
                 ''', (engagement_id, chat_id,))
 
                 # Update the goal stats for the engaged user in the users table
-                score = 1 if await fetch_goal_status(update, engaged_id) != 'set' else 0  # don't award point for setting goal if already set
-                total_goals_delta = 1 if await fetch_goal_status(update, engaged_id) != 'set' else 0  # don't record additional goal set if already set
+                score = 1 if await fetch_goal_status(update, engaged_id) != 'set' else 0                # don't award point for setting goal if already set
+                total_goals_delta = 1 if await fetch_goal_status(update, engaged_id) != 'set' else 0    # don't record additional goal set if already set
+                weekly_goals_delta = 1 if await fetch_goal_status(update, engaged_id) != 'set' else 0   # don't charge additional weekly goal if already set
                 cursor.execute('''
                     UPDATE users
                     SET today_goal_status = 'set',
                         today_goal_text = %s,
                         set_time = CURRENT_TIMESTAMP,
                         total_goals = total_goals + %s,
+                        weekly_goals_left = weekly_goals_left - %s,
                         score = score + %s       
                     WHERE user_id = %s AND chat_id = %s;
-                ''', (goal_text, score, total_goals_delta, engaged_id, chat_id,))
+                ''', (goal_text, score, weekly_goals_delta, total_goals_delta, engaged_id, chat_id,))
                 
                 conn.commit()
 
