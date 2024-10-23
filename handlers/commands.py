@@ -10,13 +10,13 @@ async def start_command(update, context):
 
 async def help_command(update, context):
     help_message = (
-        '*Ziehier commando\'s* 🧙‍♂️\n'
-        '👋 /start - Begroeting\n'
+        '*Ziehier de commando\'s* 🧙‍♂️\n'
+        '👋 /start - Hoe je doelen stelt\n'
         '❓/help - Dit lijstje\n'
         '📊 /stats - Je persoonlijke stats\n'
-        '🤔 /reset - Pas je dagdoel aan\n'
+        '🤔 /reset - Pas je ingestelde doel aan\n'
         '🗑️ /wipe - Wis je gegevens in deze chat\n'
-        '🎒 /inventaris - Acties paraat?\n'
+        '🎒 /inventaris - Bekijk je acties\n'
         '🏹 /acties - Uitleg over acties\n'
         '🤬 /fittie - Maak bezwaar\n'
         '💭 /filosofie - Laat je inspireren'
@@ -128,7 +128,7 @@ async def stats_command(update: Update, context):
     else:
         if user_id == update.effective_user.id:
             await update.message.reply_text(
-            escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me een berichtje met je dagdoel om te beginnen 🧙‍♂️\n(/start)"),
+            escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me in deze chat een berichtje met je dagdoel om te beginnen 🧙‍♂️\n(voor meer info, zie /start en /help)"),
             parse_mode="MarkdownV2")
         else:
             await update.message.reply_text(escape_markdown_v2(f"{first_name} heeft nog geen statistieken. \nBegin met het instellen van een doel 🧙‍♂️\n(/start)"),

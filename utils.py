@@ -1559,7 +1559,7 @@ async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, en
     
     
 # Randomly pick a message
-def get_random_philosophical_message(normal_only = False):
+def get_random_philosophical_message(normal_only = False, prize_only = False):
     normal_messages = [
             "Hätte hätte, Fahrradkette",  # Message 1
             "千里之行，始于足下",        
@@ -1602,7 +1602,7 @@ def get_random_philosophical_message(normal_only = False):
         },
         {
             "message": "Ik schaam me een beetje dat ik niet met een turkencracker overweg kan",
-            "prize": "raad het keukengerei wat hier bedoeld wordt, en win 1 punt"
+            "prize": "raad het keukengerei dat hier bedoeld wordt, en win 1 punt"
         },
         {
             "message": "De oom uit de eik batsen",
@@ -1612,20 +1612,20 @@ def get_random_philosophical_message(normal_only = False):
             "message": "Laat je niet prikken door dat stekelige mythische wezen, maar andersom!",
             "prize": "raad het Nederlandse spreekwoord dat hier zo'n beetje is omgedraaid, en win 1 punt"
         },
-        {
-            "message": "De kastanjes in het vuur flikkeren",
-            "prize": "raad het Nederlandse spreekwoord waarvan dit is afgeleid, en verlies 1 punt"
-        },
+        # {
+        #     "message": "De kastanjes in het vuur flikkeren",                                                                            # Message 5
+        #     "prize": "raad het Nederlandse spreekwoord waarvan dit is afgeleid, en verlies 1 punt"
+        # },
         {
             "message": "Inwoners uit deze stad zijn het staan zat",
             "prize": "raad de verborgen stad, en win 2 punten"
         },
         {
-            "message": "Welke rij planten zit er in dit huidvraagje verscholen?",
+            "message": "Welke rij planten zit er in dit huidvraagje verscholen?",                                                       # Message 7
             "prize": "raad de plantenrij, en win 1 punt"
         },
         {
-            "message": "De Total Expense Ratio, ING... naar! Daenerys zet in.",
+            "message": "De Total Expense Ratio, ING... naar! Daenerys zet in.",                                                         # Message 8
             "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 4 punten"
         }
     ]
@@ -1639,6 +1639,9 @@ def get_random_philosophical_message(normal_only = False):
     
     if normal_only:
         selected = random.choice(normal_messages)
+        
+    if prize_only:
+        selected = random.choice()
 
     # For prize messages, only wrap the philosophical part in italics
     for prize_msg in prize_messages:
