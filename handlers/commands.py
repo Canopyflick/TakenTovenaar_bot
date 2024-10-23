@@ -1,5 +1,6 @@
 ﻿from TelegramBot_Takentovenaar import get_first_name, get_database_connection
 from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 
 
 # Asynchronous command functions
@@ -9,7 +10,7 @@ async def start_command(update, context):
 
 async def help_command(update, context):
     help_message = (
-        '*Dit zijn de beschikbare commando\'s* 🧙‍♂️\n'
+        '*Ziehier commando\'s* 🧙‍♂️\n'
         '👋 /start - Begroeting\n'
         '❓/help - Dit lijstje\n'
         '📊 /stats - Je persoonlijke stats\n'
@@ -23,7 +24,7 @@ async def help_command(update, context):
     await update.message.reply_text(help_message, parse_mode="Markdown")
     
 
-async def stats_command(update, context):
+async def stats_command(update: Update, context):
     message = update.message
     user_id = None
     first_name = None 
@@ -118,8 +119,10 @@ async def stats_command(update, context):
             stats_message += f"📅 Dagdoel: voltooid om {escape_markdown_v2(completion_time)}\n📝 ||{escape_markdown_v2(today_goal_text)}||\n"
         else:
             stats_message += '📅 Dagdoel: nog niet ingesteld\n'
-        try:       
-            await update.message.reply_text(stats_message, parse_mode="MarkdownV2")
+        try:
+            trashbin_button = InlineKeyboardButton("🗑️", callback_data="delete_stats")
+            reply_markup = InlineKeyboardMarkup([[trashbin_button]])
+            await update.message.reply_text(stats_message, reply_markup=reply_markup, parse_mode="MarkdownV2")
         except AttributeError as e:
             print("die gekke error weer (jaaa)")
     else:
@@ -130,6 +133,19 @@ async def stats_command(update, context):
         else:
             await update.message.reply_text(escape_markdown_v2(f"{first_name} heeft nog geen statistieken. \nBegin met het instellen van een doel 🧙‍♂️\n(/start)"),
             parse_mode="MarkdownV2")
+
+
+# Function to handle the trashbin button click (delete the message)
+async def handle_trashbin_click(update, context):
+    query = update.callback_query
+
+    # Check if the callback data is 'delete_message'
+    if query.data == "delete_stats":
+        # Delete the message that contains the button
+        await query.message.delete()
+
+    # Acknowledge the callback to remove the 'loading' animation
+    await query.answer()
             
 
 # fix later huhauhue
@@ -233,12 +249,12 @@ async def filosofie_command(update, context):
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
         goal_text = fetch_goal_text(update)
-        philosophical_message = get_random_philosophical_message()
         if goal_text != '' and goal_text != None:
                 messages = await prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")    
                 await update.message.reply_text(f"Mijn grootvader zei altijd:\n✨_{grandpa_quote}_ 🧙‍♂️✨", parse_mode="Markdown")
-        else:  
+        else:
+            philosophical_message = get_random_philosophical_message(normal_only=True)
             await update.message.reply_text(f'_{philosophical_message}_', parse_mode="Markdown")
     except Exception as e:
         print(f"Error in filosofie_command: {e}")
@@ -252,7 +268,7 @@ async def acties_command(update, context):
     acties_message = (
         '*Alle beschikbare acties* 🧙‍♂️\n'
         '⚡ */boost* - Boost andermans doel, verhoog de inzet!\n\n'
-        '😈 */challenge* - Daag iemand uit om iets specifieks te doen."\n\n'
+        '😈 */challenge* - Daag iemand uit om iets specifieks te doen.\n\n'
         '🤝 */link* - Verbind je lot met een ander... \n\n'
         '*Zo zet je ze in*\n'
         'Gebruik je actie door met het passende commando op een berichtje van je doelwit '
@@ -269,8 +285,8 @@ async def details_command(update, context):
         '*Extra uitleg over de acties* 🧙‍♂️\n\n'
         '⚡ *Boost* je andermans doel, dan krijgen jij en je doelwit *+1* punt als ze het halen.\nHalen zij hun doel die dag niet, dan krijg jij je boost terug.\n\n'
         '😈 *Challenge* iemand om iets specifieks te doen vandaag. Jij krijgt *+1* punt zodra de uitdaging geaccepteerd wordt, en zij overschrijven hun dagdoel (als ze dat '
-        'al ingesteld hadden). Bij voltooiing krijgen zij *+2* punten. Als je met je challenge niemand tagt of niemands berichtje beantwoordt, stuur je een open uitdaging. Die kan kan dan door iedereen '
-        'worden geaccepteerd.\nWordt je uitdaging niet geaccepteerd dan kun je hem terugtrekken, of wachten, dan krijg je hem einde dag vanzelf weer terug.\n\n '
+        'al ingesteld hadden). Bij voltooiing krijgen zij *+2* punten. \nAls je met je challenge niemand tagt en ook niemands berichtje beantwoordt, stuur je een _open uitdaging_. Die kan kan dan door de eerste de beste '
+        'worden geaccepteerd.\nWordt je uitdaging níet geaccepteerd, dan kun je hem terugtrekken. Als je dat niet doet, krijg je hem einde dag vanzelf weer terug.\n\n '
         '🤝 *Link* jouw doel met dat van een ander. Nu moeten jullie allebei je dagdoel halen om *+2* punten bonus pp te verdienen.\nLukt dit '
         'een van beiden niet, betekent dat *-1* punt voor jou (en voor hen geen bonus).\n\n'
     )

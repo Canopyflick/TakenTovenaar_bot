@@ -1,11 +1,16 @@
 ﻿import os
 import psycopg2
 from telegram import Bot, ChatMember
-from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, CallbackQueryHandler, PollAnswerHandler, PollHandler, ExtBot
+from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, CallbackQueryHandler, PollHandler, ExtBot, CallbackContext
 from openai import OpenAI
-import asyncio
+import asyncio, telegram
 from datetime import datetime, time, timedelta
 from typing import Union
+
+
+print(f"python-telegram-bot version: {telegram.__version__}\n\n")
+
+
 
 # Global bot instance
 global_bot: ExtBot = None
@@ -232,22 +237,14 @@ finally:
     
 
 
-async def get_first_name(context_or_bot: Union[Bot, ExtBot, 'CallbackContext'], user_id: int) -> str:
-    """
-    Get the first name of a Telegram user.
-    
-    Args:
-        context_or_bot: The bot instance or callback context
-        user_id: Telegram user ID
-        
-    Returns:
-        str: User's first name or fallback value if error occurs
-    """
+
+async def get_first_name(context_or_bot: Union[Bot, ExtBot, CallbackContext], user_id: int) -> str:
     global global_bot
     try:
-        # Determine which bot instance to use
-        if hasattr(context_or_bot, 'bot'):
+        # Check if context_or_bot is a CallbackContext
+        if isinstance(context_or_bot, CallbackContext):
             bot = context_or_bot.bot
+        # If it's a Bot or ExtBot instance, use it directly
         elif isinstance(context_or_bot, (Bot, ExtBot)):
             bot = context_or_bot
         else:
@@ -255,14 +252,15 @@ async def get_first_name(context_or_bot: Union[Bot, ExtBot, 'CallbackContext'], 
             if global_bot is None:
                 raise ValueError("No bot instance available")
             bot = global_bot
-            
-        # Get chat member info instead of using get_chat
+
+        # Now, 'bot' is guaranteed to be a Bot or ExtBot instance
         chat_member = await bot.get_chat_member(user_id, user_id)
         return chat_member.user.first_name
-        
+
     except Exception as e:
         print(f"Error fetching user details for user_id {user_id}: {e}")
         return "Lodewijk 🚨🐛"
+    
 
 
 # Security check: am I in the chat where the bot is used?
@@ -375,7 +373,7 @@ def main():
         asyncio.get_event_loop().run_until_complete(setup(application))
 
         from handlers.challenge_handler import challenge_command, handle_challenge_response
-        application.add_handler(CallbackQueryHandler(handle_challenge_response))
+        application.add_handler(CallbackQueryHandler(handle_challenge_response, pattern=r"^(retract|accept|reject)_\d+$"))
 
         from handlers.wipe_handler import create_wipe_handler
         wipe_conv_handler = create_wipe_handler()
@@ -397,7 +395,7 @@ def main():
         application.add_handler(CommandHandler(["moves", "engagements", "specials", "engagement", "engoggos", "acties", "actie"], acties_command))
         application.add_handler(CommandHandler(["details", "movesdetails"], details_command))
         # the admin commands
-        application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd"], gift_command))
+        application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd", "goedzo"], gift_command))
         application.add_handler(CommandHandler(["steal", "steel", "sorry", "oeps"], steal_command))
         application.add_handler(CommandHandler(["revert", "neee", "oftochniet"], revert_goal_completion_command))
         application.add_handler(CommandHandler(["ranking", "tussenstand"], ranking_command))
@@ -415,6 +413,10 @@ def main():
         
         from handlers.dispute_handler import fittie_command
         application.add_handler(CommandHandler(["fittie", "oneens", "wachteensff", "nietzosnel"], fittie_command))
+        
+        # Register the CallbackQueryHandler to handle the trashbin click
+        from handlers.commands import handle_trashbin_click
+        application.add_handler(CallbackQueryHandler(handle_trashbin_click, pattern="delete_stats"))
 
 
   

@@ -1,6 +1,4 @@
-﻿from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import ContextTypes, ConversationHandler
-from pydantic import BaseModel, constr
+﻿from pydantic import BaseModel
 from TelegramBot_Takentovenaar import client, get_database_connection
 
 
@@ -11,7 +9,7 @@ async def fittie_command(update, context):
     # Ensure the command is used as a reply
     if not message.reply_to_message:
         await message.reply_text(
-            "Gebruik dit commando als antwoord op een bericht met inhoud die je wilt aankaarten. Vertel me dan liefst ook meteen wat je precies dwarszit 🧙‍♂️"
+            "Gebruik dit commando als antwoord op een bericht met inhoud die je wilt aankaarten. Vertel me dan liefst ook meteen meer over wat je dwarszit 🧙‍♂️"
         )
         return
 

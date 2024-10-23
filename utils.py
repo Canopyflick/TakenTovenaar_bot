@@ -56,6 +56,8 @@ async def reset_goal_status(bot, chat_id):
         # Process each engager for each type separately
         for engager_id_tuple in live_engagers:
             engager_id = engager_id_tuple[0]
+            print('UHHH 🐛🐛🐛🐛🐛🐛🐛🐛🐛🐛')
+            print(dir(bot))
             engager_name = await get_first_name(bot, user_id=engager_id)
             escaped_engager_name = escape_markdown_v2(engager_name)
             # Check if the engager has live boosts using fetch_live_engagements
@@ -67,8 +69,7 @@ async def reset_goal_status(bot, chat_id):
                     await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'boosts', amount = amount)
                     amount_plus = f"+{amount}"
                     escaped_amount = escape_markdown_v2(amount_plus)
-                    await bot.send_message(chat_id=chat_id, text =f"Boost van {escaped_engager_name} bleef gisteren {amount} maal onverzilverd 🧙‍♂️\n_{escaped_amount}⚡ terug naar [{escaped_engager_name}](tg://user?id={engager_id}_)"
-                                   , parse_mode="MarkdownV2")
+                    await bot.send_message(chat_id=chat_id, text =f"Boost van {escaped_engager_name} bleef gisteren {amount} maal onverzilverd 🧙‍♂️\n_{escaped_amount}⚡ terug naar [{escaped_engager_name}](tg://user?id={engager_id})_", parse_mode="MarkdownV2")
                 pending_engagements = await fetch_live_engagements(chat_id, 'pending', engager_id=engager_id)
                 if "😈" in pending_engagements:
                     amount = pending_engagements.count("😈")
@@ -79,19 +80,19 @@ async def reset_goal_status(bot, chat_id):
                                    , parse_mode="MarkdownV2")
                 amount = 0
                 if "🤝" in live_engagements or "🤝" in pending_engagements: 
-                    amount = live_engagements.count("🤝")
-                    amount += pending_engagements.count("🤝")
-                    amount = amount * -1
-                    escaped_amound = escape_markdown_v2(amount)
+                    amount = live_engagements.count("🤝") + pending_engagements.count("🤝")
+                    escaped_amount = escape_markdown_v2(amount)
+                    deduction = amount *-1
+                    escaped_deduction = escape_markdown_v2(deduction)
                     # different logic for links
-                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_{escaped_amount} punt{'en' if amount != -1 else ''}_"
+                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_{escaped_deduction} punt{'en' if amount != -1 else ''}_"
                                    , parse_mode="MarkdownV2")
                     try:
                         cursor.execute('''
                             UPDATE users
                             SET score = score - %s
                             WHERE user_id = %s AND chat_id = %s           
-                        ''', (amount, engager_id, chat_id))
+                        ''', (amount, engager_id, chat_id,))
                         conn.commit()
                     except Exception as e:
                         print(f"Error subtracting points for pending and live links for {chat_id}: {e}")
@@ -106,7 +107,7 @@ async def reset_goal_status(bot, chat_id):
             UPDATE engagements
             SET status = 'archived_unresolved'
             WHERE status IN ('live', 'pending') AND chat_id = %s           
-        ''', (chat_id))
+        ''', (chat_id,))
         conn.commit()
     except Exception as e:
         print(f"Error archiving engagements for {chat_id}: {e}")
@@ -127,6 +128,7 @@ async def reset_goal_status(bot, chat_id):
         random_morning_emoji = "🍆" 
     await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
     await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
+    message = get_random_philosophical_message()
     await bot.send_message(chat_id=chat_id, text=f"✨_{get_random_philosophical_message()}_✨", parse_mode = "Markdown")
     await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
 
@@ -229,7 +231,7 @@ async def check_use_of_special(update, context, special_type):
                 f"⚠️ _Je stuurt een open uitdaging, zonder tag en niet als antwoord op andermans berichtje.\nTrek je uitdaging in als dit niet de bedoeling was_ 🧙‍♂️", 
                 parse_mode = "Markdown"
                 )
-                await asyncio.sleep(4)
+                await asyncio.sleep(2)
                 # Schedule the deletion of the message as a background task
                 asyncio.create_task(delete_message(context, chat_id, warning_message.message_id))
             else:    
@@ -328,7 +330,7 @@ async def check_use_of_special(update, context, special_type):
         print(f"Engagement Failed op de valreep.")
   
         
-async def delete_message(context, chat_id, message_id, delay=8):
+async def delete_message(context, chat_id, message_id, delay=9):
     await asyncio.sleep(delay)
     await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     
@@ -1557,8 +1559,8 @@ async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, en
     
     
 # Randomly pick a message
-def get_random_philosophical_message():
-    philosophical_messages = [
+def get_random_philosophical_message(normal_only = False):
+    normal_messages = [
             "Hätte hätte, Fahrradkette",  # Message 1
             "千里之行，始于足下",        
             "Ask, believe, receive ✨",   
@@ -1583,17 +1585,69 @@ def get_random_philosophical_message():
             "Begin de dag met tequila",
             "Don't wait. The time will never be just right",
             "If we all did the things we are capable of doing, we would literally astound ourselves",
-            "There's power in looking silly and not caring that you do",    # Message 20
+            "There's power in looking silly and not caring that you do",                                        # Message 20
             "...",
             "Een goed begin is de halve dwerg",
-            "De tering... naar! Daenerys zet in. \n(raad het Nederlandse spreekwoord waarvan dit is afgeleid, en win 1 punt)",  # Message 23
             "En ik lach in mezelf want de sletten ik breng",
             "Bij nader inzien altijd achteraf",
-            "Sometimes we live no particular way but our own",  # Message 26
-            "If it is to be said, so it be, so it is",
-            "Te laat, noch te vroeg, arriveert (n)ooit de takentovenaar"    # Message 28
+            "Sometimes we live no particular way but our own",                                                  # Message 25
+            "If it is to be said, so it be, so it is",                                                          # Message 26
+            "Te laat, noch te vroeg, arriveert (n)ooit de Takentovenaar"                                        # Message 27
         ]
-    return random.choice(philosophical_messages)
+    
+    prize_messages = [
+        {
+            "message": "Als je muisjes op de mouwen knoeit, katten ze niet",
+            "prize": "raad het Nederlandse spreekwoord waarvan dit is... afgeleid..?, en win 2 punten"
+        },
+        {
+            "message": "Ik schaam me een beetje dat ik niet met een turkencracker overweg kan",
+            "prize": "raad het keukengerei wat hier bedoeld wordt, en win 1 punt"
+        },
+        {
+            "message": "De oom uit de eik batsen",
+            "prize": "raad het Nederlandse spreekwoord waarvan dit nogal afleidt, en win 1 punt"
+        },
+        {
+            "message": "Laat je niet prikken door dat stekelige mythische wezen, maar andersom!",
+            "prize": "raad het Nederlandse spreekwoord dat hier zo'n beetje is omgedraaid, en win 1 punt"
+        },
+        {
+            "message": "De kastanjes in het vuur flikkeren",
+            "prize": "raad het Nederlandse spreekwoord waarvan dit is afgeleid, en verlies 1 punt"
+        },
+        {
+            "message": "Inwoners uit deze stad zijn het staan zat",
+            "prize": "raad de verborgen stad, en win 2 punten"
+        },
+        {
+            "message": "Welke rij planten zit er in dit huidvraagje verscholen?",
+            "prize": "raad de plantenrij, en win 1 punt"
+        },
+        {
+            "message": "De Total Expense Ratio, ING... naar! Daenerys zet in.",
+            "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 4 punten"
+        }
+    ]
+    
+    # Combine all messages for random selection
+    all_messages = [
+        *normal_messages,
+        *[f"{msg['message']}\n\n{msg['prize']}" for msg in prize_messages]
+    ]
+    selected = random.choice(all_messages)
+    
+    if normal_only:
+        selected = random.choice(normal_messages)
+
+    # For prize messages, only wrap the philosophical part in italics
+    for prize_msg in prize_messages:
+        full_prize_msg = f"{prize_msg['message']}\n\n{prize_msg['prize']}"
+        if selected == full_prize_msg:
+            return f"✨_{prize_msg['message']}_✨\n\n{prize_msg['prize']}"
+    
+    # If it's a normal message, wrap the entire thing
+    return f"✨_{selected}_✨"
 
 
 async def send_openai_request(messages, model="gpt-4o-mini", temperature=None):
@@ -1807,25 +1861,30 @@ async def handle_regular_message(update, context):
     elif user_message == '666':
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
-            # Reset goal status
-            try:
-                conn = get_database_connection()
-                cursor = conn.cursor()
-                cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = '' WHERE chat_id = %s", (chat_id))
-                # Delete all engagements
-                cursor.execute('DELETE FROM engagements WHERE chat_id = %s', (chat_id))
-                
-                conn.commit()
-                print(f"666 Goal status reset at", datetime.now())
-                await context.bot.send_message(chat_id=update.message.chat_id, text="_SCORE STATUS RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
-            except Exception as e:
-                conn.rollback()  # Rollback the transaction on error
-                print(f"Error: {e}")
-            finally:
-                cursor.close()
-                conn.close()
-                
+            await scheduled_daily_reset(context, chat_id)
 
+
+
+
+            # # Reset goal status
+            # try:
+            #     conn = get_database_connection()
+            #     cursor = conn.cursor()
+            #     cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = '' WHERE chat_id = %s", (chat_id))
+            #     # Delete all engagements
+            #     cursor.execute('DELETE FROM engagements WHERE chat_id = %s', (chat_id))
+                
+            #     conn.commit()
+            #     print(f"666 Goal status reset at", datetime.now())
+            #     await context.bot.send_message(chat_id=update.message.chat_id, text="_SCORE STATUS RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
+            # except Exception as e:
+            #     conn.rollback()  # Rollback the transaction on error
+            #     print(f"Error: {e}")
+            # finally:
+            #     cursor.close()
+            #     conn.close()
+                
+    # reset to testing state: no engagements, 1 broccoli goal            
     elif user_message == '777':
         chat_type = update.effective_chat.type
         # Check if the chat is private or group/supergroup
@@ -2185,21 +2244,32 @@ async def reset_to_testing_state(update: Update, context: ContextTypes.DEFAULT_T
         return
 
 
-async def scheduled_daily_reset(context_or_application):
-    if hasattr(context_or_application, 'bot'):
-        # It's a context object from JobQueue
-        bot = context_or_application.bot
-    elif hasattr(context_or_application, 'get_bot'):
-        # It's an application object from setup
-        bot = context_or_application.get_bot
-    else:
-        raise ValueError("Invalid context or application passed to scheduled_daily_reset")
-    conn = get_database_connection()
-    cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT chat_id FROM users")
-    chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
-    cursor.close()
-    conn.close()
-    for chat_id in chat_ids:
-        await reset_goal_status(bot, chat_id)
+async def scheduled_daily_reset(context_or_application, chat_id=None):
+    try:
+        if hasattr(context_or_application, 'bot'):
+            # It's a context object from JobQueue
+            bot = context_or_application.bot
+        elif hasattr(context_or_application, 'get_bot'):
+            # It's an application object from setup
+            bot = context_or_application.get_bot()
+        else:
+            raise ValueError("Invalid context or application passed to scheduled_daily_reset")
+        
+        print(f"Type of bot in scheduled_daily_reset: {type(bot)}")
+        
+        if chat_id:
+            await reset_goal_status(bot, chat_id)
+            return
+        else:
+            conn = get_database_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT chat_id FROM users")
+            chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
+            cursor.close()
+            conn.close()
+            for chat_id in chat_ids:
+                await reset_goal_status(bot, chat_id)
+    except Exception as e:
+        print(f"Error in scheduled_daily_reset: {e}")
+        return
 

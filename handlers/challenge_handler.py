@@ -97,9 +97,9 @@ async def challenge_command_2(update, context, engager_id, engager_name, engaged
         # add a lil overwrite current goal reminder if engaged already set a day goal, or if it's an open challenge (no engaged_id) 
         if engaged_id:
             if await fetch_goal_status(update, engaged_id) == 'set':
-                challenge_message += "\n\n⚠️ _een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
+                challenge_message += "\n\n_een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
         if not engaged_id:
-            challenge_message += "\n\n⚠️ _een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
+            challenge_message += "\n\n_een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
             
         # Adjust buttons for open challenges
         buttons = [
