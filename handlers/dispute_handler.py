@@ -1,5 +1,7 @@
 ﻿from pydantic import BaseModel
 from TelegramBot_Takentovenaar import client, get_database_connection
+from telegram.constants import ChatAction
+import asyncio, random
 
 
 
@@ -47,6 +49,9 @@ async def fittie_command(update, context):
     }
     print(f"dispute data: {dispute_data}")
     # Acknowledge receipt and proceed to prepare the poll
+    await asyncio.sleep(1)
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+    await asyncio.sleep(2)
     await message.reply_text(
         "Onenigheid gedetecteerd! Ik zal een stemming voorbereiden 🧙‍♂️"
     )
@@ -131,9 +136,15 @@ async def prepare_dispute_poll(update, context, dispute_data):
         poll_data = completion.choices[0].message.parsed
         
         # send the opening statement
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        await asyncio.sleep(5)
         await update.message.reply_text(poll_data.openingsstatement)
         
         # send the poll
+        await asyncio.sleep(4)
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        random_delay = random.uniform(4, 10)
+        await asyncio.sleep(random_delay)
         poll_message = await context.bot.send_poll(
             chat_id=update.effective_chat.id,
             question=poll_data.question,

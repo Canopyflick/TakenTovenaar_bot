@@ -1,10 +1,16 @@
 ﻿from TelegramBot_Takentovenaar import get_first_name, get_database_connection
 from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.constants import ChatAction
+import asyncio, random
 
 
 # Asynchronous command functions
 async def start_command(update, context):
+    chat_type = update.effective_chat.type
+    if chat_type == 'private':
+        await update.message.reply_text("Uhh, hoi... 👋🧙‍♂️ Stiekem ben ik een beetje verlegen. Praat met me in een chat waar Ben bij zit, pas dan voel ik me op mijn gemak.\n\n\nPS: je kunt hier wel allerhande boodschappen ter feedback achterlaten, dan geef ik die door aan Ben (#privacy). Denk bijvoorbeeld aan feature requests, kwinkslagen, knuffelbedreigingen, valsspeelbiechten, slaapzakberichten etc.\n\nPPS: Die laatste verzon ChatGPT. En ik citeer: 'Een heel lang bericht, waarin je jezelf zou kunnen verliezen alsof je in een slaapzak kruipt.'")
+    else:
         await update.message.reply_text('Hoi! 👋🧙‍♂️\n\nIk ben Taeke Toekema Takentovenaar. Stuur mij berichtjes, bijvoorbeeld om je dagdoel in te stellen of te voltooien, of me te vragen waarom bananen krom zijn. Antwoord op mijn berichten of tag me, bijvoorbeeld zo:\n\n"@TakenTovenaar_bot ik wil vandaag 420 gram groenten eten" \n\nDruk op >> /help << voor meer opties.')
 
 
@@ -21,10 +27,22 @@ async def help_command(update, context):
         '🤬 /fittie - Maak bezwaar\n'
         '💭 /filosofie - Laat je inspireren'
     )
-    await update.message.reply_text(help_message, parse_mode="Markdown")
+    chat_type = update.effective_chat.type
+    if chat_type == 'private':
+        help_message += "\n\nHoi trouwens... 👋🧙‍♂️ Stiekem ben ik een beetje verlegen. Praat met me in een chat waar Ben bij zit, pas dan voel ik me op mijn gemak.\n\n\nPS: je kunt hier wel allerhande boodschappen ter feedback achterlaten, dan geef ik die door aan Ben (#privacy)."
+        await update.message.reply_text(help_message, parse_mode="Markdown")
+    else:  
+        await update.message.reply_text(help_message, parse_mode="Markdown")
+    
     
 
 async def stats_command(update: Update, context):
+    chat_type = update.effective_chat.type
+    # Check if the chat is private or group/supergroup
+    if chat_type == 'private':
+        await update.message.reply_text("Hihi hoi. Ik werk liever in een groepssetting 🧙‍♂️\n\n/start")
+        return
+        
     message = update.message
     user_id = None
     first_name = None 
@@ -128,10 +146,10 @@ async def stats_command(update: Update, context):
     else:
         if user_id == update.effective_user.id:
             await update.message.reply_text(
-            escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me in deze chat een berichtje met je dagdoel om te beginnen 🧙‍♂️\n(voor meer info, zie /start en /help)"),
+            escape_markdown_v2("Je hebt nog geen statistieken. \nStuur me in deze chat een berichtje met je dagdoel om te beginnen 🧙‍♂️\n(voor meer uitleg, zie /start en /help)"),
             parse_mode="MarkdownV2")
         else:
-            await update.message.reply_text(escape_markdown_v2(f"{first_name} heeft nog geen statistieken. \nBegin met het instellen van een doel 🧙‍♂️\n(/start)"),
+            await update.message.reply_text(escape_markdown_v2(f"{first_name} heeft nog geen statistieken. \nBegin met het instellen van een doel 🧙‍♂️\n(voor meer uitleg, zie /start en /help)"),
             parse_mode="MarkdownV2")
 
 
@@ -207,6 +225,10 @@ async def get_links_engaged_names(context, engager_id, cursor):
 
 
 async def reset_command(update, context):
+    chat_type = update.effective_chat.type
+    if chat_type == 'private':
+        await update.message.reply_text("Hihi uhh, hoi. Ik werk liever in een groepssetting 🧙‍♂️\n\n/start")
+        return
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
     if has_goal_today(user_id, chat_id):
@@ -245,15 +267,35 @@ async def reset_command(update, context):
 
 
 async def filosofie_command(update, context):
+    chat_type = update.effective_chat.type
+    # Check if the chat is private or group/supergroup
+    if chat_type == 'private':
+        await update.message.reply_text("Hihi hoi. Ik werk eigenlijk liever in een groepssetting... 🧙‍♂️")
+        await asyncio.sleep(3)
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        await asyncio.sleep(1)
+        await update.message.reply_text("... maarrr, vooruit dan maar, een stukje inspiratie kan ik je niet ontzeggen ...")
+        philosophical_message = get_random_philosophical_message(normal_only=True)
+        await asyncio.sleep(2)
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+        await asyncio.sleep(4)
+        await update.message.reply_text(f'_{philosophical_message}_', parse_mode="Markdown")
+        return
     try:
         user_id = update.effective_user.id
         chat_id = update.effective_chat.id
         goal_text = fetch_goal_text(update)
         if goal_text != '' and goal_text != None:
                 messages = await prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
-                grandpa_quote = await send_openai_request(messages, "gpt-4o")    
+                grandpa_quote = await send_openai_request(messages, "gpt-4o")
+                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+                random_delay = random.uniform(2, 8)
+                await asyncio.sleep(random_delay)
                 await update.message.reply_text(f"Mijn grootvader zei altijd:\n✨_{grandpa_quote}_ 🧙‍♂️✨", parse_mode="Markdown")
         else:
+            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+            random_delay = random.uniform(2, 5)
+            await asyncio.sleep(random_delay)
             philosophical_message = get_random_philosophical_message(normal_only=True)
             await update.message.reply_text(f'_{philosophical_message}_', parse_mode="Markdown")
     except Exception as e:

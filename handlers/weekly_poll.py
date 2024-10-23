@@ -3,7 +3,10 @@ from pydantic import BaseModel
 from TelegramBot_Takentovenaar import client, get_first_name, get_database_connection
 from telegram import Update
 from telegram.ext import ContextTypes
+from telegram.constants import ChatAction
 import asyncio, re
+
+
 
 async def poll_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -175,7 +178,9 @@ async def create_weekly_goals_poll(context, chat_id):
         closing_time = datetime.now() + timedelta(minutes=601)
         closing_time_formatted = closing_time.strftime('%H:%M')
 
-        await asyncio.sleep(5)
+        await asyncio.sleep(2)
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        await asyncio.sleep(3)
         await context.bot.send_message(
             chat_id=chat_id,
             text=f"De poll zal sluiten om: *{closing_time_formatted}* 🧙‍♂️", parse_mode = "Markdown"
@@ -265,7 +270,9 @@ async def retrieve_poll_results(update, context):
         chat_id=chat_id,
         text="*Laatste kans om te stemmen. De poll gaat over 1 minuut sluiten 🧙‍♂️*", parse_mode = "Markdown"
     )
-    await asyncio.sleep(65)
+    await asyncio.sleep(60)
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    await asyncio.sleep(5)
     await context.bot.send_message(
         chat_id=chat_id,
         text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen."
@@ -335,7 +342,8 @@ async def award_poll_rewards(context, chat_id, top_results):
         # Handle the error appropriately
         await context.bot.send_message(
         chat_id=chat_id,
-        text=f"🏆 Top 3 doelen uit de poll:\n\n{top_results}\n\npunten uitdelen is niet gelukt, dat moet Ben dus maar zelf even doen 🧙‍♂️"
+        text=f"🏆 Top 3 doelen uit de poll:\n\n{top_results}\n\n_punten uitdelen is niet gelukt, dat moet Ben dus maar zelf even doen 🧙‍♂️_",
+        parse_mode="Markdown"
         )
         return
 
@@ -464,10 +472,12 @@ async def award_poll_rewards(context, chat_id, top_results):
             if len(challenger_names) == 1:
                 honorable_mentions_text = f"*Eervolle vermelding voor uw uitstekende uitdager* 🧙‍♂️🤝\n{challenger_names[0]} 😈"
             else:
-                honorable_mentions_text = "*Eervolle vermeldingen voor uw uitstekende uitdagers* 🧙‍♂️🤝\n" + ", ".join(challenger_names) + " 😈"
+                honorable_mentions_text = f"*Eervolle vermeldingen voor uw uitstekende uitdagers* 🧙‍♂️🤝\n" + ", ".join(challenger_names) + " 😈"
         else:
             honorable_mentions_text = "_(Uitdagers hadden ditmaal geen hand in de resultaten) 🧙‍♂️_"
-        # Announcements, including pauses for effect
+        # Announcements, including pauses for effect        
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        await asyncio.sleep(1)
         await context.bot.send_message(chat_id=chat_id, text="...")
         await asyncio.sleep(2)
         await context.bot.send_message(chat_id=chat_id, text="3️⃣")
@@ -479,11 +489,14 @@ async def award_poll_rewards(context, chat_id, top_results):
         await context.bot.send_message(
         chat_id=chat_id,
         text="🎊")
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
         await asyncio.sleep(1)
         await context.bot.send_message(
         chat_id=chat_id,
         text=f"{awards_text}", parse_mode = "Markdown")
-        await asyncio.sleep(10)
+        await asyncio.sleep(5)
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        await asyncio.sleep(5)
         await context.bot.send_message(
         chat_id=chat_id,
         text=f"{honorable_mentions_text}", parse_mode = "Markdown")
