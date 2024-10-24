@@ -122,14 +122,15 @@ async def reset_goal_status(bot, chat_id):
     # Send reset message
     morning_emojis = ["🌅", "🌄"]
     random_morning_emoji = random.choice(morning_emojis)
-    if random.random() < 0.03:
+    if random.random() < 0.05:
             random_morning_emoji = "🧙‍♂️"
-    if random.random() < 0.03:
+    if random.random() < 0.02:
         random_morning_emoji = "🍆" 
     await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
     await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
     message = get_random_philosophical_message()
-    await bot.send_message(chat_id=chat_id, text=f"✨_{get_random_philosophical_message()}_✨", parse_mode = "Markdown")
+    await bot.send_message(chat_id=chat_id, text=message, parse_mode = "Markdown")
+    await asyncio.sleep(3)
     await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
 
 
@@ -1629,6 +1630,13 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
             "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 4 punten"
         }
     ]
+    
+    # New message to append to each prize submessage
+    additional_message = "(Taeke kan hier nog niet mee overweg, prijsuitreiking door Ben.)"
+
+    # Loop through each dictionary in the list and modify the 'prize' value
+    for prize_message in prize_messages:
+        prize_message["prize"] += additional_message
     
     # Combine all messages for random selection
     all_messages = [

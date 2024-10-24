@@ -279,6 +279,7 @@ async def filosofie_command(update, context):
         await asyncio.sleep(2)
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         await asyncio.sleep(4)
+        await asyncio.sleep(1)
         await update.message.reply_text(f'_{philosophical_message}_', parse_mode="Markdown")
         return
     try:
