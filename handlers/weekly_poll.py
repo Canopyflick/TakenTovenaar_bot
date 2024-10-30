@@ -208,6 +208,7 @@ async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
 
 async def retrieve_poll_results(update, context):
+    print(f"we zitten nu te retrieven")
     job_data = context.job.data if context.job else None
     chat_id=None
     poll_id = None

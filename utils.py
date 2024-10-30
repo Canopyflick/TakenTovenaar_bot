@@ -1,10 +1,10 @@
 ﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection
-from datetime import datetime
+from datetime import datetime, timezone
 import json, asyncio, re, random
-
 from telegram import Update
 from telegram.ext import CallbackContext, ContextTypes
-
+from typing import Literal
+from pydantic import BaseModel
 from handlers.weekly_poll import retrieve_poll_results
 
 
@@ -60,7 +60,7 @@ async def reset_goal_status(bot, chat_id):
             print(dir(bot))
             engager_name = await get_first_name(bot, user_id=engager_id)
             escaped_engager_name = escape_markdown_v2(engager_name)
-            # Check if the engager has live boosts using fetch_live_engagements
+            # Check if the engager has live engagements using fetch_live_engagements
             live_engagements = await fetch_live_engagements(chat_id, engager_id=engager_id)
             if live_engagements:
                 if "⚡" in live_engagements:
@@ -71,15 +71,16 @@ async def reset_goal_status(bot, chat_id):
                     escaped_amount = escape_markdown_v2(amount_plus)
                     await bot.send_message(chat_id=chat_id, text =f"Boost van {escaped_engager_name} bleef gisteren {amount} maal onverzilverd 🧙‍♂️\n_{escaped_amount}⚡ terug naar [{escaped_engager_name}](tg://user?id={engager_id})_", parse_mode="MarkdownV2")
                 pending_engagements = await fetch_live_engagements(chat_id, 'pending', engager_id=engager_id)
-                if "😈" in pending_engagements:
-                    amount = pending_engagements.count("😈")
-                    await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'challenges', amount = amount)
-                    amount_plus = f"+{amount}"
-                    escaped_amount = escape_markdown_v2(amount_plus)
-                    await bot.send_message(chat_id=chat_id, text =f"Challenge van {escaped_engager_name} werd gisteren {amount} maal niet geaccepteerd 🧙‍♂️\n_{escaped_amount}😈 terug naar [{escaped_engager_name}](tg://user?id={engager_id})_"
-                                   , parse_mode="MarkdownV2")
-                amount = 0
-                if "🤝" in live_engagements or "🤝" in pending_engagements: 
+                if pending_engagements:
+                    if "😈" in pending_engagements:
+                        amount = pending_engagements.count("😈")
+                        await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'challenges', amount = amount)
+                        amount_plus = f"+{amount}"
+                        escaped_amount = escape_markdown_v2(amount_plus)
+                        await bot.send_message(chat_id=chat_id, text =f"Challenge van {escaped_engager_name} werd gisteren {amount} maal niet geaccepteerd 🧙‍♂️\n_{escaped_amount}😈 terug naar [{escaped_engager_name}](tg://user?id={engager_id})_"
+                                       , parse_mode="MarkdownV2")
+                    amount = 0
+                if "🤝" in live_engagements or (pending_engagements is not None and "🤝" in pending_engagements): 
                     amount = live_engagements.count("🤝") + pending_engagements.count("🤝")
                     escaped_amount = escape_markdown_v2(amount)
                     deduction = amount *-1
@@ -222,17 +223,18 @@ async def check_use_of_special(update, context, special_type):
                 print(f"Username mentioned: {username}, engaged_name is {engaged_name}")
     print(f"\n\nUser mentioned: {user_mentioned}\n\n")            
     
-    challenged_id = engaged_id
+    open_challenge = False
 
     # In case of no mentions, replies are checked
     if not user_mentioned:
         if update.message.reply_to_message is None:
             if special_type == "challenges":
+                open_challenge = True
                 warning_message = await update.message.reply_text(
                 f"⚠️ _Je stuurt een open uitdaging, zonder tag en niet als antwoord op andermans berichtje.\nTrek je uitdaging in als dit niet de bedoeling was_ 🧙‍♂️", 
                 parse_mode = "Markdown"
                 )
-                await asyncio.sleep(2)
+                await asyncio.sleep(1)
                 # Schedule the deletion of the message as a background task
                 asyncio.create_task(delete_message(context, chat_id, warning_message.message_id))
             else:    
@@ -293,9 +295,9 @@ async def check_use_of_special(update, context, special_type):
         context.chat_data['engager_id'] = engager_id
         context.chat_data['engager_name'] = engager_name
         # Storing a different engaged_id in case of an open challenge
-        if not challenged_id:
-            context.chat_data['engaged_id'] = None
-        if challenged_id:
+        if open_challenge:
+            context.chat_data['engaged_id'] = None  
+        if not open_challenge:
             context.chat_data['engaged_id'] = engaged_id
             live_engagements = await fetch_live_engagements(chat_id, engaged_id=engaged_id)
             if live_engagements:
@@ -435,14 +437,14 @@ async def handle_goal_setting(update, user_id, chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
-        set_time = datetime.now()
+        set_time = datetime.now(tz=timezone.utc)
         cursor.execute('''
                         UPDATE users 
                         SET today_goal_status = 'set',
                         set_time = %s,
                         total_goals = total_goals + 1,
                         score = score + 1,
-                        weekly_goals_left = weekly_goals_left -1
+                        weekly_goals_left = weekly_goals_left - 1
                         WHERE user_id = %s AND chat_id = %s
                         ''', (set_time, user_id, chat_id))
         conn.commit()
@@ -483,13 +485,19 @@ async def check_goal_compatibility(update, goal_text, user_message):
     return assistant_response
 
 # Assistant_response == 'Klaar'             
-async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
+async def handle_goal_completion(update, context, user_id, chat_id, goal_text, from_button=False, first_name=None):
     # Rephrase the goal in past tense
-    user_message = update.message.text
+    user_message = None
+    if not from_button:
+        user_message = update.message.text
+    
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
-        assistant_response = await check_goal_compatibility(update, goal_text, user_message)
+        assistant_response = 'Ja'
+        # ie: if not from_button (reminder completion button)
+        if user_message:
+            assistant_response = await check_goal_compatibility(update, goal_text, user_message)
         if assistant_response == 'Nee':
             await handle_unclassified_mention(update)
         else:
@@ -516,69 +524,57 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
                 WHERE user_id = %s AND chat_id = %s
             ''', (f"Done today at {completion_time}", user_id, chat_id))
             conn.commit()
-            result = check_live_engagement(cursor, user_id, chat_id)
-            if result is None:
-                await update.message.reply_text("Lekker bezig! ✅ \n_+4 punten_"
+            engaged_emojis = await fetch_live_engagements(chat_id, engaged_id=user_id)
+            if engaged_emojis is None:
+                if from_button:
+                    await context.bot.send_message(
+                    chat_id=chat_id, 
+                    text=f"Lekker bezig {first_name}! ✅ \n_+4 punten_", parse_mode="Markdown")
+                if not from_button:
+                    await update.message.reply_text("Lekker bezig! ✅ \n_+4 punten_"
                         , parse_mode="Markdown")
-                # record goal if not a challenge
+                # record non-challenge goal
                 try:
                     await record_goal(user_id, chat_id, goal_text)
                 except Exception as e:
                     print(f"Error recording goal: {e}")
+                # Lastly, transition any pending links to live - for completions without any existing live engagements
+                await advance_links_status(cursor, conn, chat_id, user_id)
                 return
-            else:
-                emojis = await fetch_live_engagements(chat_id, engaged_id = user_id)
-                if "😈" in emojis:
-                    try:
-                        cursor.execute('''
-                            SELECT engager_id 
-                            FROM engagements 
-                            WHERE engaged_id = %s 
-                            AND status = 'live' 
-                            AND chat_id = %s
-                            AND special_type = 'challenges'           
-                        ''', (user_id, chat_id))
-                        result = cursor.fetchone()
-                        engager_id = result[0] if result else None
-                        # record goal if challenge
-                        await record_goal(user_id, chat_id, goal_text, engager_id, is_challenge=True)
-                    except Exception as e:
-                        print(f"Error recording goal: {e}")   
-                unescaped_emojis = emojis.replace('\\(', '').replace('\\)', '')
-                engaged_id = user_id
-                engaged_bonus_total, engager_bonuses = await calculate_bonuses(update, engaged_id, chat_id)
-                engaged_reward_total = engaged_bonus_total + 4
-                print(f"\nengaged_reward_total = engaged_bonus_total + 4 | {engaged_reward_total} = {engaged_bonus_total} +4")
-                print(f"\nengager_bonuses = {engager_bonuses}")
-                engaged_name = update.effective_user.first_name
-                completion_message = f"Lekker bezig! ✅ \n_+{engaged_reward_total} (4 + {engaged_bonus_total}{unescaped_emojis}) punten voor {engaged_name}_"
-                for engager_id, bonus in engager_bonuses.items():
-                    engager_name = await get_first_name(context, engager_id)
-                    if bonus >0:
-                        completion_message += f"\n_+{bonus} voor {engager_name}_"  # Append each engager's name and bonus
+            
+            elif "😈" in engaged_emojis:
+                try:
+                    cursor.execute('''
+                        SELECT engager_id 
+                        FROM engagements 
+                        WHERE engaged_id = %s 
+                        AND status = 'live' 
+                        AND chat_id = %s
+                        AND special_type = 'challenges'           
+                    ''', (user_id, chat_id))
+                    result = cursor.fetchone()
+                    engager_id = result[0] if result else None
+                    # record goal if challenge
+                    await record_goal(user_id, chat_id, goal_text, engager_id, is_challenge=True)
+                except Exception as e:
+                    print(f"Error recording goal: {e}")   
+            unescaped_emojis = engaged_emojis.replace('\\(', '').replace('\\)', '')
+            engaged_id = user_id
+            engaged_bonus_total, engager_bonuses = await calculate_bonuses(update, engaged_id, chat_id)
+            engaged_reward_total = engaged_bonus_total + 4
+            print(f"\nengaged_reward_total = engaged_bonus_total + 4 | {engaged_reward_total} = {engaged_bonus_total} +4")
+            print(f"\nengager_bonuses = {engager_bonuses}")
+            engaged_name = update.effective_user.first_name
+            completion_message = f"Lekker bezig! ✅ \n_+{engaged_reward_total} (4 + {engaged_bonus_total}{unescaped_emojis}) punten voor {engaged_name}_"
+            for engager_id, bonus in engager_bonuses.items():
+                engager_name = await get_first_name(context, engager_id)
+                if bonus >0:
+                    completion_message += f"\n_+{bonus} voor {engager_name}_"  # Append each engager's name and bonus
                     
-                await update.message.reply_text(completion_message, parse_mode = "Markdown")
-                # Lastly, transition any pending links to live 
-                pending_emojis_1 = await fetch_live_engagements(chat_id, 'pending', engaged_id = user_id)
-                if "🤝" in pending_emojis_1:
-                    # update link status from pending to live
-                    cursor.execute('''
-                        UPDATE engagements
-                        SET status = 'live'
-                        WHERE engaged_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
-                    ''', (user_id, chat_id)) 
-                    conn.commit()
-                    print(f"🚨Now transitioning a link to live status because engaged finished their goal first")
-                pending_emojis_2 = await fetch_live_engagements(chat_id, 'pending', engager_id = user_id)
-                if "🤝" in pending_emojis_2:
-                    # update link status from pending to live
-                    cursor.execute('''
-                        UPDATE engagements
-                        SET status = 'live'
-                        WHERE engager_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
-                    ''', (user_id, chat_id)) 
-                    conn.commit()
-                    print(f"🚨Now transitioning a link to live status because engager finished their goal first")
+            await update.message.reply_text(completion_message, parse_mode = "Markdown")
+            # Lastly, transition any pending links to live - for completions with existing live engagements
+            await advance_links_status(cursor, conn, chat_id, user_id)
+
     except Exception as e:
         print(f"Error in goal_completion: {e}")
         conn.rollback()
@@ -586,6 +582,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text):
     finally:
         cursor.close()
         conn.close() 
+        
 
 async def record_goal(user_id, chat_id, goal_text, engager_id=None, is_challenge=False):
     # Rephrase the goal for recording
@@ -623,6 +620,35 @@ async def record_goal(user_id, chat_id, goal_text, engager_id=None, is_challenge
     cursor.close()
     conn.close() 
     print(f"\n📚 DOEL OPGESLAGEN VOOR HET NAGESLACHT\n")
+
+
+
+async def advance_links_status(cursor, conn, chat_id, user_id):
+    try:
+        pending_emojis_1 = await fetch_live_engagements(chat_id, 'pending', engaged_id = user_id)
+        print(f"pending_emojis_1: {pending_emojis_1}")
+        if pending_emojis_1 is not None and "🤝" in pending_emojis_1:
+            # update link status from pending to live
+            cursor.execute('''
+                UPDATE engagements
+                SET status = 'live'
+                WHERE engaged_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
+            ''', (user_id, chat_id)) 
+            conn.commit()
+            print(f"🚨Now transitioning a link to live status because engaged finished their goal first")
+        pending_emojis_2 = await fetch_live_engagements(chat_id, 'pending', engager_id = user_id)
+        print(f"pending_emojis_2: {pending_emojis_2}")
+        if pending_emojis_2 is not None and "🤝" in pending_emojis_2:
+            # update link status from pending to live
+            cursor.execute('''
+                UPDATE engagements
+                SET status = 'live'
+                WHERE engager_id = %s AND chat_id = %s AND status = 'pending' AND special_type = 'links';
+            ''', (user_id, chat_id)) 
+            conn.commit()
+            print(f"🚨Now transitioning a link to live status because engager finished their goal first")
+    except Exception as e:
+        print(f"Error transitioning pending link to live: {e}")
     
 
 
@@ -1101,7 +1127,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         print("system prompt: classification message")
         system_message = system_message = """
         # Opdracht
-        Jij bent een bot in een telegramgroep over het samen stellen en behalen van doelen. 
+        Jij bent @TakenTovenaar_bot in een telegramgroep over het samen stellen en behalen van doelen. 
         Je classificeert een berichtje van een gebruiker in een van de volgende vier categorieën: 
         Doelstelling, Klaar, Meta of Overig.
 
@@ -1110,18 +1136,19 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
 
         ## Klaar
         Als de gebruiker rapporteert dat hun ingestelde doel met succes is afgerond, zoals: 'klaar!', 
-        'Gelukt!', of, als hun doel bijvoorbeeld was om de afwas te doen: 'het afdruiprekje is vol'. 
+        'Gelukt!'. Een eventueel ingesteld doel is ook voorhanden: beoordeel dus of het ingestelde dagdoel compatibel is met hun bericht.
+        Als hun doel bijvoorbeeld was om de afwas te doen, dan moet je 'het afdruiprekje is vol' als 'Klaar' classificeren. Maar als hun doel was om 10km te hardlopen, dan niet.
 
         ## Meta
         Als de gebruiker een vraag stelt over jou zelf als bot of over de groep. Voorbeelden van meta-vragen: 
-        'Wie heeft de meeste punten?', 'Waarom weet jij niks over Fitrie's doel?', of 'Wanneer krijgen we weer nieuwe boosts?'.
+        'Wie heeft de meeste punten?', 'Waarom weet jij niks over Fitrie's doel?', of 'Wanneer krijgen we weer nieuwe boosts/links/challenges?'.
 
         ## Overig
         Alle gevallen die niet duidelijk onder bovenstaande drie groepen vallen, zijn 'Overig'. Voorbeelden van overig: 
         'Wat vind jij van kapucijners?', of 'Ik heb heel veel zin in m'n avondeten.', of: 'Wie was de laatste president van Amerika?' 
 
         # Antwoord
-        Antwoord alleen met je classificatieoordeel: 'Doelstelling', 'Klaar', 'Meta', of 'Overig'.
+        Antwoord door eerst een beredenering te geven, die de voorhanden zijnde gegevens logisch op een rijtje zet. Daarna komt je classificatie: 'Doelstelling', 'Klaar', 'Meta', of 'Overig'.
         """
 
     elif message_type == 'other':
@@ -1490,7 +1517,7 @@ def finished_goal_today(user_id, chat_id):
 
 
 # Currently handles EITHER engager OR engaged        
-async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, engaged_id = None, plain=False):
+async def fetch_live_engagements(chat_id, status = 'live', engager_id=None, engaged_id=None, plain=False):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
@@ -1536,6 +1563,8 @@ async def fetch_live_engagements(chat_id, status = 'live', engager_id = None, en
         
         # Build the final string of emojis
         engagement_string = '⚡' * boost_count + '🤝' * link_count + '😈' * challenge_count
+        if not engagement_string:
+            return None
 
         # Add parentheses around the emoji string
         if engagement_string:
@@ -1580,7 +1609,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
             "He who does not obey himself will be commanded",
             "Elke dag is er wel iets waarvan je zegt: als ik die taak nou eens zou afronden, "  
             "dan zou m'n dag meteen een succes zijn. Maar ik heb er geen zin in. Weet je wat, ik stel het "
-            "me als doel in de Telegramgroep, en dan ben ik misschien wat gemotiveerder om het te doen xx 🙃",
+            "me als doel bij Taeke, en dan ben ik misschien wat gemotiveerder om het te doen xx 🙃",
             "All evils are due to a lack of Telegram bots",
             "Art should disturb the comfortable, and comfort the disturbed",
             "Begin de dag met tequila",
@@ -1627,12 +1656,12 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
         },
         {
             "message": "De Total Expense Ratio, ING... naar! Daenerys zet in.",                                                         # Message 8
-            "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 4 punten"
+            "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 3 punten"
         }
     ]
     
     # New message to append to each prize submessage
-    additional_message = "(Taeke kan hier nog niet mee overweg, prijsuitreiking door Ben.)"
+    additional_message = "\n\n(Taeke weet hier niets van, prijsuitreiking door Ben.)"
 
     # Loop through each dictionary in the list and modify the 'prize' value
     for prize_message in prize_messages:
@@ -1661,7 +1690,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
     return f"✨_{selected}_✨"
 
 
-async def send_openai_request(messages, model="gpt-4o-mini", temperature=None):
+async def send_openai_request(messages, model="gpt-4o-mini", temperature=None, response_format=None):
     try:
         request_params = {
             "model": model,
@@ -1670,10 +1699,14 @@ async def send_openai_request(messages, model="gpt-4o-mini", temperature=None):
         # only add temperature if it's provided (not None)
         if temperature is not None:
             request_params["temperature"] = temperature
-            
-        response = client.chat.completions.create(**request_params)
-        
-        return response.choices[0].message.content.strip()
+        if response_format is not None:
+            request_params['response_format'] = response_format
+        if response_format:
+            response = client.beta.chat.completions.parse(**request_params)
+            return response.choices[0].message.parsed
+        else:
+            response = client.chat.completions.create(**request_params)
+            return response.choices[0].message.content.strip()
     except Exception as e:
         print(f"Error calling OpenAI: {e}")
         return None
@@ -1707,6 +1740,10 @@ async def analyze_bot_reply(update, context):
         return
     try:
         # Prepare and send OpenAI messages with bot_last_response
+        class Classificatie(BaseModel):
+            beredenering: str
+            classificatie: Literal['Doelstelling', 'Klaar', 'Meta', 'Overig']
+            
         messages = await prepare_openai_messages(
             update, 
             user_message, 
@@ -1714,14 +1751,19 @@ async def analyze_bot_reply(update, context):
             goal_text=goal_text if goal_text else None, 
             bot_last_response=bot_last_response
         )
-        assistant_response = await send_openai_request(messages, temperature=0.1)
+        
+        # Prepare and send OpenAI messages
+        print(messages)
+        assistant_response = await send_openai_request(messages, temperature=0.1, response_format=Classificatie)
+        print(f"analyze_bot_mention > classification: {assistant_response}")
+        classificatie = assistant_response.classificatie
         print(f"analyze_bot_reply > classification: {assistant_response}")
         # Handle the OpenAI response
         goals_remaining = await fetch_weekly_goals_left(chat_id, user_id)
         print(f'goals_remaining: {goals_remaining}')
-        if assistant_response == 'Doelstelling' and goals_remaining == 0:
+        if classificatie == 'Doelstelling' and goals_remaining == 0:
             await update.message.reply_text("🚫 Je kunt deze week geen doelen meer instellen 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown") 
-        elif assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
+        elif classificatie == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             rand_value = random.random()
             # 4 times out of 5 (80%s)
             if rand_value < 0.80:
@@ -1732,17 +1774,19 @@ async def analyze_bot_reply(update, context):
             # once every 30 times (3,33%s)    
             else:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
-        elif assistant_response == 'Doelstelling' and has_goal_today(user_id, chat_id):
+        elif classificatie == 'Doelstelling' and has_goal_today(user_id, chat_id):
             await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
-        elif assistant_response == 'Doelstelling':
+        elif classificatie == 'Doelstelling' and goals_remaining == 0:
+            await update.message.reply_text("🚫 Je kunt deze week geen doelen meer instellen 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
+        elif classificatie == 'Doelstelling':
             if goals_remaining == 1:
                 await update.message.reply_text("Dit is je laatste dagdoel deze week 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
             await handle_goal_setting(update, user_id, chat_id)
             print("analyze_bot_reply > handle_goal_setting")
-        elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
+        elif classificatie == 'Klaar' and has_goal_today(user_id, chat_id):
             await handle_goal_completion(update, context, user_id, chat_id, goal_text)
             print("analyze_bot_reply > handle_goal_completion")
-        elif assistant_response == 'Meta':
+        elif classificatie == 'Meta':
             await handle_meta_remark(update, context, user_id, chat_id, goal_text)
             print("analyze_bot_reply > handle_meta_remark")   
         else:
@@ -1769,11 +1813,17 @@ async def analyze_bot_mention(update, context):
         goal_text=goal_text if goal_text else None
 
         # Prepare and send OpenAI messages
+        class Classificatie(BaseModel):
+            beredenering: str
+            classificatie: Literal['Doelstelling', 'Klaar', 'Meta', 'Overig']
+            
         messages = await prepare_openai_messages(update, user_message, message_type='classification', goal_text=goal_text)
         print(messages)
-        assistant_response = await send_openai_request(messages, temperature=0.1)
+        assistant_response = await send_openai_request(messages, temperature=0.1, response_format=Classificatie)
         print(f"analyze_bot_mention > classification: {assistant_response}")
-        if assistant_response == 'Doelstelling' and finished_goal_today(user_id, chat_id):
+        classificatie = assistant_response.classificatie
+        print(f" classification: {classificatie}")
+        if classificatie == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             
             rand_value = random.random()
             # 4 times out of 5 (80%s)
@@ -1785,13 +1835,18 @@ async def analyze_bot_mention(update, context):
             # once every 30 times (3,33%s)    
             else:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
-        elif assistant_response == 'Doelstelling':
+        elif classificatie == 'Doelstelling' and has_goal_today(user_id, chat_id):
+            await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
+        elif classificatie == 'Doelstelling':
+            if goals_remaining == 1:
+                await update.message.reply_text("Dit is je laatste dagdoel deze week 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
+
             await handle_goal_setting(update, user_id, chat_id)
             print("analyze_bot_mention > handle_goal_setting")
-        elif assistant_response == 'Klaar' and has_goal_today(user_id, chat_id):
+        elif classificatie == 'Klaar' and has_goal_today(user_id, chat_id):
             await handle_goal_completion(update, context, user_id, chat_id, goal_text)
             print("analyze_bot_mention > handle_goal_completion")
-        elif assistant_response == 'Meta':
+        elif classificatie == 'Meta':
             await handle_meta_remark(update, context, user_id, chat_id, goal_text)
         else:
             await handle_unclassified_mention(update)
@@ -1873,6 +1928,12 @@ async def handle_regular_message(update, context):
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
             await scheduled_daily_reset(context, chat_id)
+    
+    elif user_message == '1111':
+        if await check_chat_owner(update, context):
+            from handlers.reminders import prepare_daily_reminders
+            chat_id = update.effective_chat.id
+            await prepare_daily_reminders(context, chat_id)
 
 
 

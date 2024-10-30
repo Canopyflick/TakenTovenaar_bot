@@ -28,6 +28,7 @@
     <Compile Include="handlers\challenge_handler.py" />
     <Compile Include="handlers\commands.py" />
     <Compile Include="handlers\dispute_handler.py" />
+    <Compile Include="handlers\reminders.py" />
     <Compile Include="handlers\weekly_poll.py" />
     <Compile Include="handlers\wipe_handler.py" />
     <Compile Include="TelegramBot_Takentovenaar.py" />

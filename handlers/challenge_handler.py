@@ -1,6 +1,7 @@
 ﻿from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ConversationHandler, CallbackContext
 from utils import check_identical_engagement, fetch_live_engagements, check_use_of_special, add_special, send_openai_request, fetch_goal_status, get_database_connection
+import asyncio
 
 
 HANDLE_RESPONSE = 1
@@ -73,7 +74,7 @@ async def challenge_command_2(update, context, engager_id, engager_name, engaged
         {"role": "user", "content": challenge_goal}
     ] 
     rephrased_goal = await send_openai_request(messages, temperature=0.1)  # Extract the rephrased goal from OpenAI response
-    print(f"****Rephrased challenge prompt: \n\n{messages}\n\nRephrased goal: {rephrased_goal}\n\n")
+    print(f"Rephrased goal: {rephrased_goal}\n\n")
     if rephrased_goal:
         # Dynamically replace the placeholders in the rephrased goal with actual values
         rephrased_goal = rephrased_goal.format(engager_name=engager_name, engaged_name=engaged_name)
@@ -97,18 +98,18 @@ async def challenge_command_2(update, context, engager_id, engager_name, engaged
         # add a lil overwrite current goal reminder if engaged already set a day goal, or if it's an open challenge (no engaged_id) 
         if engaged_id:
             if await fetch_goal_status(update, engaged_id) == 'set':
-                challenge_message += "\n\n_een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
+                challenge_message += "\n\n_een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging aanneemt_"
         if not engaged_id:
-            challenge_message += "\n\n_een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging accepteert_"
+            challenge_message += "\n\n_een eventueel reeds ingesteld dagdoel wordt overschreven als je deze uitdaging aanneemt_"
             
         # Adjust buttons for open challenges
         buttons = [
             [InlineKeyboardButton("👿 Uitdaging intrekken", callback_data=f'retract_{engagement_id}')],
         ]
         if not engaged_id:  # Open challenge, only accept is available
-            buttons.append([InlineKeyboardButton("👍 Accepteren", callback_data=f'accept_{engagement_id}')])
+            buttons.append([InlineKeyboardButton("👍 Aannemen", callback_data=f'accept_{engagement_id}')])
         else:  # Direct challenge, both accept and reject available
-            buttons.append([InlineKeyboardButton("👍 Accepteren", callback_data=f'accept_{engagement_id}'), InlineKeyboardButton("👎 Weigeren", callback_data=f'reject_{engagement_id}')])
+            buttons.append([InlineKeyboardButton("👍 Aannemen", callback_data=f'accept_{engagement_id}'), InlineKeyboardButton("👎 Weigeren", callback_data=f'reject_{engagement_id}')])
         
         await update.message.reply_text(challenge_message, parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(buttons))
     else:
@@ -204,8 +205,13 @@ async def handle_challenge_response(update, context):
                     engaged_id = user_id
                     engaged_name = query.from_user.first_name
                     if await check_identical_engagement(engager_id, engaged_id, "challenges", chat_id):
-                        await query.answer(text=f"🚫 Jij hebt vandaag al een uitdaging van {engager_name} geaccepteerd 🧙‍♂️\n(of er loopt nog een ander uitdagingsverzoek op jou)", show_alert=True)
-                        return
+                        emojis = await fetch_live_engagements(chat_id, engaged_id=engaged_id)
+                        if "😈" in emojis:
+                            await query.answer(text=f"🚫 Jij hebt vandaag al een uitdaging geaccepteerd, no takesie backsies 🧙‍♂️ (zie /stats voor je doel)", show_alert=True)
+                            return
+                        else:
+                            await query.answer(text=f"🚫 Er staat nog een persoonlijk uitdagingsverzoek van {engager_name} naar jou uit, dat je eerst moet afwijzen voordat je deze open uitdaging kunt aannemen 🧙‍♂️", show_alert=True)
+                            return
                     live_engagements = await fetch_live_engagements(chat_id, engaged_id=engaged_id)
                     if live_engagements:
                         if "😈" in live_engagements:
@@ -217,7 +223,8 @@ async def handle_challenge_response(update, context):
                             SET engaged_id = %s
                             WHERE id = %s AND chat_id = %s;
                         ''', (engaged_id, engagement_id, chat_id))
-                        await context.bot.send_message(chat_id, text="😈")
+                        await query.answer()
+                        await query.message.reply_text("😈")
                         await query.edit_message_text(
                         f"{engaged_name} heeft de uitdaging van [{engager_name}](tg://user?id={engager_id}) geaccepteerd! 🧙‍♂️\n_+1 punt voor {engager_name}_",
                         parse_mode="Markdown"
@@ -255,7 +262,13 @@ async def handle_challenge_response(update, context):
                 ''', (goal_text, score, weekly_goals_delta, total_goals_delta, engaged_id, chat_id,))
                 
                 conn.commit()
-
+                await query.answer()
+                await query.message.reply_text("😈")
+                await query.edit_message_text(
+                f"{engaged_name} heeft de uitdaging van [{engager_name}](tg://user?id={engager_id}) geaccepteerd! 🧙‍♂️\n_+1 punt voor {engager_name}_",
+                parse_mode="Markdown"
+                )
+                
             except Exception as e:
                 print(f"Error processing accept in database: {e}")
                 await query.answer("Er is een fout opgetreden bij het verwerken van de acceptatie.")
@@ -271,9 +284,9 @@ async def handle_challenge_response(update, context):
                 
         elif action == 'reject':
             print(f"\n4/4 ({query.data})\nACTION = REJECT\n\nCallback data:{query.data}")
-            await query.answer(text="Dat mag jij niet xx 🧙‍♂️", show_alert=True)
             if user_id != engaged_id:
                 print(f"Not allowed, rejection is only for engaged")
+                await query.answer(text="Dat mag jij niet xx 🧙‍♂️", show_alert=True)
                 return
             print(f"Valid rejection")
             # Return the challenge to the engager + archive

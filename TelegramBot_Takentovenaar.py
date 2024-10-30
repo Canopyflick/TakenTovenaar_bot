@@ -4,7 +4,7 @@ from telegram import Bot, ChatMember
 from telegram.ext import ApplicationBuilder, MessageHandler, filters, CommandHandler, CallbackQueryHandler, PollHandler, ExtBot, CallbackContext
 from openai import OpenAI
 import asyncio, telegram
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from typing import Union
 
 
@@ -100,6 +100,7 @@ try:
         'today_goal_text': "TEXT DEFAULT ''",
         'live_challenge': "TEXT DEFAULT '{}'",
         'inventory': "JSONB DEFAULT '{\"boosts\": 1, \"challenges\": 1, \"links\": 1}'",
+        'reminder_scheduled':" BOOLEAN DEFAULT False"
     }
 
     # Create the tables if they don't exist
@@ -110,13 +111,14 @@ try:
             chat_id BIGINT,
             total_goals INTEGER DEFAULT 0,
             completed_goals INTEGER DEFAULT 0,
-            weekly_goals_left INTEGER DEFAULT 4,       
+            weekly_goals_left INTEGER DEFAULT 4 CHECK (weekly_goals_left >= 0),       
             score INTEGER DEFAULT 0,
             today_goal_status TEXT DEFAULT 'not set', -- either 'set', 'not set', or 'Done at TIMESTAMP'
             set_time TIMESTAMP,       
             today_goal_text TEXT DEFAULT '',
             live_challenge TEXT DEFAULT '{}',
-            inventory JSONB DEFAULT '{"boosts": 1, "challenges": 1, "links": 1}',       
+            inventory JSONB DEFAULT '{"boosts": 1, "challenges": 1, "links": 1}',
+            reminder_scheduled BOOLEAN DEFAULT False,
             PRIMARY KEY (user_id, chat_id)
         )
     ''')
@@ -124,7 +126,7 @@ try:
     
     #2 bot table
     # Calculate 4:01 AM last night to set that as default last_reset_time
-    now = datetime.now()
+    now = datetime.now(tz=timezone.utc)
     unformatted_time = now.replace(hour=2, minute=1, second=0, microsecond=0) - timedelta(days=1)
     two_am_last_night = unformatted_time.strftime('%Y-%m-%d %H:%M:%S')
 
@@ -291,22 +293,45 @@ async def notify_ben(update,context):
         
 async def print_edit(update, context):
     print("Someone edited a message")
+    
 
+def reset_reminders_on_startup():
+    conn = get_database_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE users
+        SET reminder_scheduled = False
+    ''')
+    conn.commit()
+    conn.close()
+    cursor.close()
+    print(f"🕳️ Reset all scheduled reminders flags")
 
 
 # Setup function 
 async def setup(application):
     try:
+
+        reset_reminders_on_startup()
+ 
         from utils import scheduled_daily_reset
         # Schedule the daily reset job 
         job_queue = application.job_queue
-        reset_time = time(hour=2, minute=0, second=0)   # +2hs from CET aka 4AM
+        reset_time = time(hour=2, minute=0, second=0)   # +2hs from CET ie 4AM
         job_queue.run_daily(scheduled_daily_reset, time=reset_time)
         print(f"\nDaily reset job queue set up successfully at {reset_time}")
+        
+        # Schedule the daily reminders jobs 
+        from handlers.reminders import prepare_daily_reminders
+        reminder_time_early = time(hour=17, minute=19, second=00)   # +2hs from CET ie 19:19
+        reminder_time_late = time(hour=20, minute=22, second=00)    # +2hs from CET ie 22:22
+        job_queue.run_daily(prepare_daily_reminders, time=reminder_time_early)
+        job_queue.run_daily(prepare_daily_reminders, time=reminder_time_late)
+        print(f"\nDaily reminders job queues set up successfully at {reminder_time_early} & {reminder_time_late}")
 
         from handlers.weekly_poll import scheduled_weekly_poll
         # Schedule the weekly poll job 
-        poll_time = time(hour=5, minute=16)  # +2hs from CET, aka 7AM
+        poll_time = time(hour=5, minute=16)  # +2hs from CET, ie 7AM
         job_queue.run_daily(
             scheduled_weekly_poll, 
             time=poll_time, 
@@ -317,14 +342,17 @@ async def setup(application):
         from utils import get_last_reset_time
         # Check if reset is needed on startup
         last_reset = get_last_reset_time()
-        now = datetime.now()
+        if last_reset is not None and last_reset.tzinfo is None:
+            last_reset = last_reset.replace(tzinfo=timezone.utc)
+        now = datetime.now(tz=timezone.utc)
         print(f"\nLast reset time : {last_reset}")
         print(f"Current time    : {now}")
 
-        # Define scheduled reset time (2:00 AM)
-        reset_time_today = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        # Define scheduled reset time (4:00 AM CET)
+        # Make reset_time_today timezone-aware in UTC
+        reset_time_today = now.replace(hour=4, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
 
-        # If it's after 2:00 AM today, the fallback checks if last reset was before 2:00 AM today
+        # If it's after 4:00 AM today, the fallback checks if last reset was before 4:00 AM today
         if now >= reset_time_today:
             if last_reset is None or last_reset < reset_time_today:
                 # Perform the fallback reset
@@ -333,7 +361,7 @@ async def setup(application):
             else:
                 print("^ No catch-up reset needed ^\n")  
         else:
-            # If it's before 2:00 AM today, the fallback checks if last reset was before 2:00 AM yesterday
+            # If it's before 4:00 AM today, the fallback checks if last reset was before 2:00 AM yesterday
             reset_time_yesterday = reset_time_today - timedelta(days=1)
             if last_reset is None or last_reset < reset_time_yesterday:
                 # Perform the fallback reset
@@ -374,6 +402,9 @@ def main():
 
         from handlers.challenge_handler import challenge_command, handle_challenge_response
         application.add_handler(CallbackQueryHandler(handle_challenge_response, pattern=r"^(retract|accept|reject)_\d+$"))
+
+        from handlers.reminders import handle_goal_completion_reminder_response
+        application.add_handler(CallbackQueryHandler(handle_goal_completion_reminder_response, pattern=r"^(klaar|nee)_\d+_.+$"))
 
         from handlers.wipe_handler import create_wipe_handler
         wipe_conv_handler = create_wipe_handler()

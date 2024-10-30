@@ -2,7 +2,7 @@
 from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
-import asyncio, random
+import asyncio, random, re
 
 
 # Asynchronous command functions
@@ -17,11 +17,11 @@ async def start_command(update, context):
 async def help_command(update, context):
     help_message = (
         '*Ziehier de commando\'s* 🧙‍♂️\n'
-        '👋 /start - Hoe je doelen stelt\n'
+        '👋 /start - Uitleg om te beginnen\n'
         '❓/help - Dit lijstje\n'
         '📊 /stats - Je persoonlijke stats\n'
-        '🤔 /reset - Pas je ingestelde doel aan\n'
-        '🗑️ /wipe - Wis je gegevens in deze chat\n'
+        '🤔 /reset - Pas je doel aan\n'
+        '🗑️ /wipe - Wis je gegevens\n'
         '🎒 /inventaris - Bekijk je acties\n'
         '🏹 /acties - Uitleg over acties\n'
         '🤬 /fittie - Maak bezwaar\n'
@@ -81,9 +81,6 @@ async def stats_command(update: Update, context):
         print(f"Result is {result}")
     except Exception as e:
         print(f"Error: {e} couldn't fetch user stats?'")
-    finally:
-        cursor.close()
-        conn.close()
 
     if result:
         total_goals, completed_goals, score, today_goal_status, today_goal_text, weekly_goals_left = result
@@ -105,38 +102,47 @@ async def stats_command(update: Update, context):
             if set_time:
                 set_time = set_time[0]
                 formatted_set_time = set_time.strftime("%H:%M")
-            # Check if user is live-engaged, linking-pending, or linking someone else, aka needs to see emojis
-            if await fetch_live_engagements(chat_id, engaged_id=user_id) or "🤝" in await fetch_live_engagements(chat_id, 'pending', engager_id=user_id, engaged_id=user_id) or "🤝" in await fetch_live_engagements(chat_id, engager_id = user_id):
+            live_engagements_engaged = await fetch_live_engagements(chat_id, engaged_id=user_id)
+            pending_engagements = await fetch_live_engagements(chat_id, status='pending', engager_id=user_id, engaged_id=user_id)
+            # Check if user is live-engaged or has a pending link (either as engaged or engager) aka: needs to see emojis in stats)
+            if (live_engagements_engaged) or \
+                (pending_engagements and "🤝" in pending_engagements):
                 print(f"user_id: {user_id}")
-                escaped_emoji_string = await fetch_live_engagements(chat_id, engaged_id=user_id)
+                escaped_emoji_string = live_engagements_engaged
                 print(f"escaped_emoji_string: {escaped_emoji_string}")
                 # this will contain pending challenges and links, where the user is ENGAGED 
                 escaped_pending_emojis =  await fetch_live_engagements(chat_id, status='pending', engaged_id=user_id)
-                # but we want only the links
-                if "🤝" in escaped_pending_emojis:
-                    escaped_combined_string = await process_emojis(escaped_emoji_string, escaped_pending_emojis)
-                    print(f"FINAL STRING pff please let this ever happen: {escaped_combined_string}")
-                    stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_combined_string}\n📝 {escape_markdown_v2(today_goal_text)}\n"
-                if "🤝" not in escaped_pending_emojis:
+                # but we want only the links, and then add those to the live-string
+                if escaped_pending_emojis is not None:
+                    if "🤝" in escaped_pending_emojis:
+                        escaped_combined_string = await process_emojis(escaped_emoji_string, escaped_pending_emojis)
+                        print(f"FINAL STRING: {escaped_combined_string}")
+                        stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_combined_string}\n📝 {escape_markdown_v2(today_goal_text)}\n"
+                # if there are no pending links, we just display the live-string as is                        
+                if escaped_pending_emojis is None or ("🤝" not in escaped_pending_emojis):
                     stats_message += f"📅 Dagdoel: sinds {escape_markdown_v2(formatted_set_time)} {escaped_emoji_string}\n📝 {escape_markdown_v2(today_goal_text)}\n"
-                # And then a special treatment for the links where user is ENGAGER #7890
-                pending_emojis_2 =  await fetch_live_engagements(chat_id, status = 'pending', engager_id=user_id)
-                if "🤝" in pending_emojis_2:
-                    # Getting the string that shows the names of the people who you're linking
-                    links_string = await get_links_engaged_names(context, user_id, cursor)
-                    cursor.close()
-                    escaped_links_string = escape_markdown_v2(links_string)
-                    stats_message += f"{escaped_links_string}\n"
+ 
             else:
                 stats_message += f"📅 Dagdoel: ingesteld om {escape_markdown_v2(formatted_set_time)}\n📝_{escape_markdown_v2(today_goal_text)}_\n"
                 
-            cursor.close()
-            conn.close()
         elif today_goal_status.startswith('Done'):
             completion_time = today_goal_status.split(' ')[3]  # Extracts time from "Done today at H:M"
             stats_message += f"📅 Dagdoel: voltooid om {escape_markdown_v2(completion_time)}\n📝 ||{escape_markdown_v2(today_goal_text)}||\n"
         else:
             stats_message += '📅 Dagdoel: nog niet ingesteld\n'
+            
+        # And then a special treatment for the links where user is ENGAGER #7890
+        pending_emojis_2 =  await fetch_live_engagements(chat_id=chat_id, status='pending', engager_id=user_id)
+        live_links =  await fetch_live_engagements(chat_id=chat_id, engager_id=user_id)
+        if (pending_emojis_2 and "🤝" in pending_emojis_2) or (live_links and "🤝" in live_links):
+            # Getting the string that shows the names of the people who you're linking
+            links_string = await get_links_engaged_names(context, user_id, cursor)
+            escaped_links_string = escape_markdown_v2(links_string)
+            stats_message += f"{escaped_links_string}\n"
+            
+        cursor.close()
+        conn.close()
+        
         try:
             trashbin_button = InlineKeyboardButton("🗑️", callback_data="delete_stats")
             reply_markup = InlineKeyboardMarkup([[trashbin_button]])
@@ -169,21 +175,24 @@ async def handle_trashbin_click(update, context):
 # fix later huhauhue
 async def process_emojis(escaped_emoji_string, escaped_pending_emojis):
     # Extract the existing emojis inside the brackets from the escaped_emoji_string
-    # Assuming the escaped_emoji_string starts and ends with \( and \)
-    start_bracket = escaped_emoji_string.index(r"\(") + 2
-    end_bracket = escaped_emoji_string.index(r"\)")
+    # Pattern to match content between \(...\)
+    inner_emojis = ''
+    if escaped_emoji_string:
+        # Extract the existing emojis inside the brackets from the escaped_emoji_string
+        # Pattern to match content between \(...\)
+        pattern = r"\\\((.*?)\\\)"
+        match = re.search(pattern, escaped_emoji_string)
+        inner_emojis = match.group(1) if match else ''
     
-    # Get the existing emojis inside the brackets
-    inner_emojis = escaped_emoji_string[start_bracket:end_bracket]
-    
+
     # Extract all 🤝 emojis from the pending emoji string
     pending_links = ''.join([char for char in escaped_pending_emojis if char == '🤝'])
     combined_inner_emojis = inner_emojis + pending_links
-    
+
     # Create the new string with the updated emojis inside the brackets
-    new_escaped_emoji_string = r"(" + combined_inner_emojis + r")"
-    escaped_combined_string = escape_markdown_v2(new_escaped_emoji_string)
-    
+    new_emoji_string = f"({combined_inner_emojis})"
+    escaped_combined_string = escape_markdown_v2(new_emoji_string)
+
     return escaped_combined_string
 
             
@@ -233,10 +242,10 @@ async def reset_command(update, context):
     chat_id = update.effective_chat.id
     if has_goal_today(user_id, chat_id):
         # don't allow resets if challenged
-        if await fetch_live_engagements(chat_id, engaged_id = user_id):
-            if "😈" in await fetch_live_engagements(chat_id, engaged_id = user_id):
+        if await fetch_live_engagements(chat_id, engaged_id=user_id):
+            if "😈" in await fetch_live_engagements(chat_id, engaged_id=user_id):
                 goal_text = fetch_goal_text(update)   
-                await update.message.reply_text(f"Challenge reeds geaccepteerd. Er is geen weg meer terug 😈👻🧙‍♂️\n_{goal_text}_", parse_mode = "Markdown")        
+                await update.message.reply_text(f"Challenge reeds geaccepteerd. Er is geen weg meer terug 😈 👻 🧙‍♂️\n\n_{goal_text}_", parse_mode = "Markdown")        
                 return False
         try:
             conn = get_database_connection()
@@ -245,7 +254,6 @@ async def reset_command(update, context):
             cursor.execute('''
                            UPDATE users
                            SET today_goal_status = 'not set',
-                           set_time = NULL,
                            score = score - 1,
                            today_goal_text = '',
                            total_goals = total_goals - 1,
@@ -402,7 +410,7 @@ async def handle_admin(update, context, type, amount=None):
     try:
         user_id = update.message.reply_to_message.from_user.id
     except Exception as e:
-        print(f"Error. Uitdelen kan alleen als reply: {e}")
+        print(f"Error. Uitdelen/reverten kan alleen als reply: {e}")
         return False
     first_name = update.message.reply_to_message.from_user.first_name
     chat_id = update.effective_chat.id
