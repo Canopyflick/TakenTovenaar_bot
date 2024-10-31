@@ -127,14 +127,15 @@ try:
     #2 bot table
     # Calculate 4:01 AM last night to set that as default last_reset_time
     now = datetime.now(tz=timezone.utc)
-    unformatted_time = now.replace(hour=2, minute=1, second=0, microsecond=0) - timedelta(days=1)
-    two_am_last_night = unformatted_time.strftime('%Y-%m-%d %H:%M:%S')
+    unformatted_time = now.replace(hour=3, minute=1, second=0, microsecond=0) - timedelta(days=1)
+    four_am_last_night = unformatted_time.strftime('%Y-%m-%d %H:%M:%S')
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS bot_status (
+        chat_id BIGINT PRIMARY KEY,
         last_reset_time TIMESTAMP DEFAULT %s
         )
-    ''', (two_am_last_night,))
+    ''', (four_am_last_night,))
     conn.commit()
 
     #3 engagements table
@@ -317,14 +318,14 @@ async def setup(application):
         from utils import scheduled_daily_reset
         # Schedule the daily reset job 
         job_queue = application.job_queue
-        reset_time = time(hour=2, minute=0, second=0)   # +2hs from CET ie 4AM
+        reset_time = time(hour=3, minute=0, second=0)   # +2hs from CET ie 4AM
         job_queue.run_daily(scheduled_daily_reset, time=reset_time)
         print(f"\nDaily reset job queue set up successfully at {reset_time}")
         
         # Schedule the daily reminders jobs 
         from handlers.reminders import prepare_daily_reminders
-        reminder_time_early = time(hour=17, minute=19, second=00)   # +2hs from CET ie 19:19
-        reminder_time_late = time(hour=20, minute=22, second=00)    # +2hs from CET ie 22:22
+        reminder_time_early = time(hour=18, minute=19, second=00)   # +2hs from CET ie 19:19
+        reminder_time_late = time(hour=21, minute=22, second=00)    # +2hs from CET ie 22:22
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_early)
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_late)
         print(f"\nDaily reminders job queues set up successfully at {reminder_time_early} & {reminder_time_late}")
@@ -340,33 +341,54 @@ async def setup(application):
         print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday")
 
         from utils import get_last_reset_time
-        # Check if reset is needed on startup
-        last_reset = get_last_reset_time()
-        if last_reset is not None and last_reset.tzinfo is None:
-            last_reset = last_reset.replace(tzinfo=timezone.utc)
         now = datetime.now(tz=timezone.utc)
-        print(f"\nLast reset time : {last_reset}")
-        print(f"Current time    : {now}")
 
         # Define scheduled reset time (4:00 AM CET)
         # Make reset_time_today timezone-aware in UTC
         reset_time_today = now.replace(hour=4, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
 
-        # If it's after 4:00 AM today, the fallback checks if last reset was before 4:00 AM today
-        if now >= reset_time_today:
-            if last_reset is None or last_reset < reset_time_today:
-                # Perform the fallback reset
-                print("^ Perform catch-up reset ^\n")
-                await scheduled_daily_reset(application)
+        # Retrieve all chat IDs from the database
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT chat_id FROM users")
+        chat_ids = [chat_id[0] for chat_id in cursor.fetchall()]
+        # Ensure each chat_id is initialized in `bot_status`
+        for chat_id in chat_ids:
+            cursor.execute(
+                """
+                INSERT INTO bot_status (chat_id, last_reset_time)
+                VALUES (%s, %s)
+                ON CONFLICT (chat_id) DO NOTHING
+                """,
+                (chat_id, reset_time_today - timedelta(days=1))  # Initialize with the previous day's reset time
+            )
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        # Check if each chat needs a reset
+        for chat_id in chat_ids:
+            last_reset = get_last_reset_time(chat_id)
+            if last_reset is not None and last_reset.tzinfo is None:
+                last_reset = last_reset.replace(tzinfo=timezone.utc)
+                
+            print(f"\nLast reset time : {last_reset} for chat {chat_id}")
+            print(f"Current time    : {now}")
+
+            # Determine if a catch-up reset is needed for each chat
+            if now >= reset_time_today:
+                # If now is after 4:00 AM today, check if last reset was before 4:00 AM today
+                if last_reset is None or last_reset < reset_time_today:
+                    print(f"^ Perform catch-up reset for chat {chat_id} ^\n")
+                    await scheduled_daily_reset(application, chat_id)
+                else:
+                    print(f"^ No catch-up reset needed for chat {chat_id} ^\n")
             else:
-                print("^ No catch-up reset needed ^\n")  
-        else:
-            # If it's before 4:00 AM today, the fallback checks if last reset was before 2:00 AM yesterday
-            reset_time_yesterday = reset_time_today - timedelta(days=1)
-            if last_reset is None or last_reset < reset_time_yesterday:
-                # Perform the fallback reset
-                print("^ Performing catch-up reset ^")
-                await scheduled_daily_reset(application)
+                # If now is before 4:00 AM today, check if last reset was before 4:00 AM yesterday
+                reset_time_yesterday = reset_time_today - timedelta(days=1)
+                if last_reset is None or last_reset < reset_time_yesterday:
+                    print(f"^ Performing catch-up reset for chat {chat_id} ^")
+                    await scheduled_daily_reset(application, chat_id)
 
     except Exception as e:
         print(f"Error setting up job queue: {e}")
@@ -449,9 +471,6 @@ def main():
         from handlers.commands import handle_trashbin_click
         application.add_handler(CallbackQueryHandler(handle_trashbin_click, pattern="delete_stats"))
 
-
-  
-        
         # Bind the message analysis to any non-command text messages
         application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
         # Handler for edited messages

@@ -1,6 +1,6 @@
 ﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection
 from datetime import datetime, timezone
-import json, asyncio, re, random
+import json, asyncio, re, random, pprint
 from telegram import Update
 from telegram.ext import CallbackContext, ContextTypes
 from typing import Literal
@@ -118,7 +118,7 @@ async def reset_goal_status(bot, chat_id):
         conn.close()    
         
     # Update the last reset time
-    update_last_reset_time()
+    update_last_reset_time(chat_id)
 
     # Send reset message
     morning_emojis = ["🌅", "🌄"]
@@ -135,14 +135,20 @@ async def reset_goal_status(bot, chat_id):
     await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
 
 
-def update_last_reset_time():
+def update_last_reset_time(chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
         current_time = datetime.now()
-        cursor.execute("UPDATE bot_status SET last_reset_time = %s", (current_time,))
+        cursor.execute(
+            """
+            INSERT INTO bot_status (chat_id, last_reset_time) VALUES (%s, %s)
+            ON CONFLICT (chat_id) DO UPDATE SET last_reset_time = EXCLUDED.last_reset_time
+            """,
+            (chat_id, current_time)
+        )
         conn.commit()
-        print(f"last_reset_time updated to: {current_time}")
+        print(f"last_reset_time updated for chat {chat_id} to: {current_time}")
     except Exception as e:
         print(f"Error updating last reset time: {e}")
         conn.rollback()
@@ -151,17 +157,20 @@ def update_last_reset_time():
         conn.close() 
 
         
-def get_last_reset_time():
+def get_last_reset_time(chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT last_reset_time FROM bot_status")
+        cursor.execute("SELECT last_reset_time FROM bot_status WHERE chat_id = %s", (chat_id,))
         result = cursor.fetchone()
         if result is None:
             # If no record exists, insert a default value
             now = datetime.now()
             default_time = now.replace(hour=2, minute=1, second=0, microsecond=0)
-            cursor.execute("INSERT INTO bot_status (last_reset_time) VALUES (%s)", (default_time,))
+            cursor.execute(
+                "INSERT INTO bot_status (chat_id, last_reset_time) VALUES (%s, %s)",
+                (chat_id, default_time)
+            )            
             conn.commit()
             return default_time
         return result[0]
@@ -183,6 +192,8 @@ async def check_use_of_special(update, context, special_type):
     engager_id = engager.id
     engager_name = engager.first_name
     message = update.message
+    
+    pprint.pprint(update.to_dict())
     entities = message.entities
 
     engaged = None
@@ -1639,7 +1650,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
             "prize": "raad het Nederlandse spreekwoord waarvan dit nogal afleidt, en win 1 punt"
         },
         {
-            "message": "Laat je niet prikken door dat stekelige mythische wezen, maar andersom!",
+            "message": "Je niet laten prikken door dat stekelige mythische wezen, maar andersom!",
             "prize": "raad het Nederlandse spreekwoord dat hier zo'n beetje is omgedraaid, en win 1 punt"
         },
         # {
@@ -1661,7 +1672,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
     ]
     
     # New message to append to each prize submessage
-    additional_message = "\n\n(Taeke weet hier niets van, prijsuitreiking door Ben.)"
+    additional_message = "\n\n(Taeke weet hier niets van, prijsuitreiking door Ben)"
 
     # Loop through each dictionary in the list and modify the 'prize' value
     for prize_message in prize_messages:
@@ -1765,13 +1776,13 @@ async def analyze_bot_reply(update, context):
             await update.message.reply_text("🚫 Je kunt deze week geen doelen meer instellen 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown") 
         elif classificatie == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             rand_value = random.random()
-            # 4 times out of 5 (80%s)
+            # 4 times out of 5 (80%)
             if rand_value < 0.80:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
-            # once every 6 times (16,67%s)
+            # once every 6 times (16,67%)
             elif rand_value >= 0.8333:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag... STREBER! 😘")
-            # once every 30 times (3,33%s)    
+            # once every 30 times (3,33%)    
             else:
                 await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
         elif classificatie == 'Doelstelling' and has_goal_today(user_id, chat_id):
@@ -2328,7 +2339,7 @@ async def scheduled_daily_reset(context_or_application, chat_id=None):
             raise ValueError("Invalid context or application passed to scheduled_daily_reset")
         
         print(f"Type of bot in scheduled_daily_reset: {type(bot)}")
-        
+        # currently always called iterating over specific chat_ids. (But I want to keep the option open to just call it without chat_id, and perform the iteration inside this function)
         if chat_id:
             await reset_goal_status(bot, chat_id)
             return
