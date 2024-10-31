@@ -182,6 +182,11 @@ def get_last_reset_time(chat_id):
         conn.close() 
 
 async def check_use_of_special(update, context, special_type):
+    print(f"Full update object {json.dumps(update.to_dict(), indent=2)}")
+    # Log relevant parts of the context object
+    print(f"Chat data:\n{context.chat_data}")
+    print(f"User data:\n{context.user_data}")
+    print(f"Bot data:\n{context.bot_data}")
     special_type_singular = special_type.rstrip('s')
     if special_type_singular.endswith('e'):
         special_type_verb = special_type_singular + 'n'
