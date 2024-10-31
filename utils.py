@@ -1,7 +1,7 @@
 ﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection
 from datetime import datetime, timezone
 import json, asyncio, re, random, pprint
-from telegram import Update
+from telegram import Update, MessageEntity
 from telegram.ext import CallbackContext, ContextTypes
 from typing import Literal
 from pydantic import BaseModel
@@ -214,12 +214,11 @@ async def check_use_of_special(update, context, special_type):
                 engaged_name = await get_first_name(context, user_id=engaged_id)
                 user_mentioned = True
                 print(f"Mentioned User ID: {engaged_id}\nMentioned User Name: {engaged_name}")  
-            elif entity.type == "mention":  # Detect if there's a mention of a user with a username
-                username = message.text[entity.offset:entity.offset + entity.length]  # Extract the username from the message text
-                username = username.lstrip('@')
+            elif entity.type == MessageEntity.MENTION:  # Detect if there's a mention of a user with a username
+                username = message.text[entity.offset + 1:entity.offset + entity.length]
                 try:
                     # Use the get_chat method to get the user details
-                    user = await global_bot.get_chat(username)  # This will return a Chat object
+                    user = await global_bot.get_chat(f'@{username}')  # This will return a Chat object
                     if user.type == "private":  # Ensure it's a user and not a group or channel
                         engaged_id = user.id  # Extract the user ID
                         engaged_name = user.first_name
