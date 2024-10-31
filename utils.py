@@ -218,7 +218,7 @@ async def check_use_of_special(update, context, special_type):
                 username = message.text[entity.offset + 1:entity.offset + entity.length]
                 try:
                     # Use the get_chat method to get the user details
-                    user = await global_bot.get_chat(f'@{username}')  # This will return a Chat object
+                    user = await context.bot.get_chat(f'@{username}')  # This will return a Chat object
                     if user.type == "private":  # Ensure it's a user and not a group or channel
                         engaged_id = user.id  # Extract the user ID
                         engaged_name = user.first_name

@@ -332,7 +332,7 @@ async def setup(application):
 
         from handlers.weekly_poll import scheduled_weekly_poll
         # Schedule the weekly poll job 
-        poll_time = time(hour=5, minute=16)  # +2hs from CET, ie 7AM
+        poll_time = time(hour=6, minute=16)  # 1hs from CET, ie 7AM
         job_queue.run_daily(
             scheduled_weekly_poll, 
             time=poll_time, 
