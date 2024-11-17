@@ -516,9 +516,55 @@ async def link_command(update, context):
 
 
 async def ranking_command(update, context):
-    await update.message.reply_text("🚧 Wordt aan gewerkt 🧙‍♂️")
-    print("UNDER CONSTRUCTION")
-    return
+    if await check_chat_owner(update, context):
+        chat_id = update.message.chat.id
+
+        # SQL query to fetch first names and scores for the current chat
+        query = """
+        SELECT first_name, score
+        FROM users
+        WHERE chat_id = %s
+        ORDER BY score DESC;
+        """
+
+        try:
+            # Connect to the database
+            conn = get_database_connection()
+            cursor = conn.cursor()
+
+            # Execute the query
+            cursor.execute(query, (chat_id,))
+            rows = cursor.fetchall()
+
+            # Check if there are any users in the chat
+            if not rows:
+                await update.message.reply_text("🚫 Geen scores gevonden 🧙‍♂️")
+                return
+
+            # Build the ranking message
+            ranking_message = "🏆 *Lijstje*\n"
+
+            for rank, (first_name, score) in enumerate(rows, start=1):
+                # Use the fetched first_name and score directly
+                first_name = first_name or "Onbekende gebruiker"  # Fallback if first_name is NULL
+                ranking_message += f"{rank}. {first_name}: {score}\n"
+
+            # Send the ranking message
+            await update.message.reply_text(ranking_message, parse_mode="Markdown")
+
+        except Exception as e:
+            # Handle any errors
+            print(f"Error fetching rankings: {e}")
+            await update.message.reply_text("🚫 Er is een fout opgetreden bij het ophalen van de ranglijst 🧙‍♂️")
+
+        finally:
+            # Close the database connection
+            if conn:
+                cursor.close()
+                conn.close()
+    else:
+        print("non-Ben tried to fetch ranking")
+
 
 
 
