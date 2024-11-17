@@ -1,5 +1,5 @@
 ﻿from TelegramBot_Takentovenaar import get_first_name, get_database_connection
-from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status
+from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status, update_user_record
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 import asyncio, random, re
@@ -12,6 +12,12 @@ async def start_command(update, context):
         await update.message.reply_text("Uhh, hoi... 👋🧙‍♂️ Stiekem ben ik een beetje verlegen. Praat met me in een chat waar Ben bij zit, pas dan voel ik me op mijn gemak.\n\n\nPS: je kunt hier wel allerhande boodschappen ter feedback achterlaten, dan geef ik die door aan Ben (#privacy). Denk bijvoorbeeld aan feature requests, kwinkslagen, knuffelbedreigingen, valsspeelbiechten, slaapzakberichten etc.\n\nPPS: Die laatste verzon ChatGPT. En ik citeer: 'Een heel lang bericht, waarin je jezelf zou kunnen verliezen alsof je in een slaapzak kruipt.'")
     else:
         await update.message.reply_text('Hoi! 👋🧙‍♂️\n\nIk ben Taeke Toekema Takentovenaar. Stuur mij berichtjes, bijvoorbeeld om je dagdoel in te stellen of te voltooien, of me te vragen waarom bananen krom zijn. Antwoord op mijn berichten of tag me, bijvoorbeeld zo:\n\n"@TakenTovenaar_bot ik wil vandaag 420 gram groenten eten" \n\nDruk op >> /help << voor meer opties.')
+        try:
+            user_id = update.message.from_user.id
+            chat_id = update.message.chat_id
+            await update_user_record(context, user_id, chat_id)
+        except Exception as e:
+            print(f"Error checking user records in start_command: {e}")
 
 
 async def help_command(update, context):
@@ -33,6 +39,12 @@ async def help_command(update, context):
         await update.message.reply_text(help_message, parse_mode="Markdown")
     else:  
         await update.message.reply_text(help_message, parse_mode="Markdown")
+        try:
+            user_id = update.message.from_user.id
+            chat_id = update.message.chat_id
+            await update_user_record(context, user_id, chat_id)
+        except Exception as e:
+            print(f"Error checking user records in help_command: {e}")
     
     
 
@@ -318,8 +330,8 @@ async def inventory_command(update, context):
 async def acties_command(update, context):
     acties_message = (
         '*Alle beschikbare acties* 🧙‍♂️\n'
-        '⚡ */boost* - Boost andermans doel, verhoog de inzet!\n\n'
-        '😈 */challenge* - Daag iemand uit om iets specifieks te doen.\n\n'
+        '⚡ */boost* - Boost andermans doel, verhoog de inzet!\n'
+        '😈 */challenge* - Daag iemand uit om iets specifieks te doen.\n'
         '🤝 */link* - Verbind je lot met een ander... \n\n'
         '*Zo zet je ze in*\n'
         'Gebruik je actie door met het passende commando op een berichtje van je doelwit '

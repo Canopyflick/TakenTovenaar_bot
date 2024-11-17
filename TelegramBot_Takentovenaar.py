@@ -239,8 +239,6 @@ finally:
     conn.close() 
     
 
-
-
 async def get_first_name(context_or_bot: Union[Bot, ExtBot, CallbackContext], user_id: int) -> str:
     global global_bot
     try:

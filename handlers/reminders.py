@@ -35,7 +35,7 @@ async def prepare_daily_reminders(context, chat_id=None):
     time_now = datetime.now()
     
     # Do the goal_setters nudges first, unless it's after 8, then skip
-    if time_now < time_now.replace(hour=20, minute=20, second=0, microsecond=0):
+    if time_now < time_now.replace(hour=20, minute=00, second=0, microsecond=0):
         print(f"Yep het is vroeg genoeg")
         # 2. Fetch goal setters (only selecting user_id) and send them a hardcoded reminder immediately
         for chat_id in chat_ids: 
@@ -43,6 +43,8 @@ async def prepare_daily_reminders(context, chat_id=None):
             goal_setters = await fetch_goal_setters(cursor, chat_id)
             if goal_setters:
                 await send_daily_reminder(context, chat_id, goal_setters)
+    if time_now > time_now.replace(hour=20, minute=00, second=0, microsecond=0):
+        print(f"Te laat om goal_setters nog te triggeren")                
     
     # Then gather info for the goal_completion nudges
     goal_completers = None
@@ -192,7 +194,7 @@ async def send_daily_reminder(context, chat_id, goal_setters=None, completion_re
                 
 async def handle_goal_completion_reminder_response(update, context):
     query = update.callback_query
-    print(f"{query.data})\nButton pressed by {query.from_user.id}, we're inside handle_goal_completion_button.")
+    print(f"{query.data})\nButton pressed by {query.from_user.id}, we're inside handle_goal_completion_reminder_response.")
     chat_id = update.effective_chat.id
     user_id = query.from_user.id
     callback_data = query.data.split('_')  # ['completion', user_id]
@@ -205,7 +207,7 @@ async def handle_goal_completion_reminder_response(update, context):
         if callback_data[0] == 'klaar':
             await query.answer(text=f"🎉", show_alert=True)
             await query.message.delete()
-            await handle_goal_completion(update, context, target_user_id, chat_id, goal_text, from_button=True)
+            await handle_goal_completion(update, context, target_user_id, chat_id, goal_text, from_button=True, first_name=targeted_first_name)
         elif callback_data[0] == 'nee':
             await query.answer(text=f"Stel evt. met /reset nog een ander doel in vandaag 🧙‍♂️", show_alert=False)
             from utils import prepare_openai_messages, send_openai_request
@@ -223,7 +225,7 @@ async def handle_goal_completion_reminder_response(update, context):
     else:
         if not await check_chat_owner(update, context):
             await query.answer(text=f"Mjeh dat moet {targeted_first_name} toch zelf doen xx 🧙‍♂️", show_alert=True)
-            print(f"{user_id} probeerde handle_goal_completion_button te gebruiken voor {targeted_first_name} :)")
+            print(f"{user_id} probeerde handle_goal_completion_reminder_response te gebruiken voor: {targeted_first_name}")
             return
                 
 
@@ -321,3 +323,5 @@ async def is_reminder_scheduled(user_id, chat_id):
     conn.close()
     cursor.close()
     return result[0] if result else False
+
+

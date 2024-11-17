@@ -11,13 +11,20 @@ from handlers.weekly_poll import retrieve_poll_results
 # First orchestration: function to analyze any chat message, and check whether it replies to the bot, mentions it, or neither
 async def analyze_message(update, context):
     if await is_ben_in_chat(update, context):
+        # Check and add the user to the users table if missing, including first_name  
         try:
+            user_id = update.message.from_user.id
+            chat_id = update.message.chat_id
+            await update_user_record(context, user_id, chat_id)
+        except Exception as e:
+            print(f"Error checking user records in analyze_message: {e}")
+        try:          
             if update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
-                print("analyze_message > analyze_bot_reply")
-                await analyze_bot_reply(update, context)          
+                print("analyze_message > analyze_message_to_bot (Reply)")
+                await analyze_message_to_bot(update, context, type='reply')          
             elif update.message and '@TakenTovenaar_bot' in update.message.text:
-                print("analyze_message > analyze_bot_mention")
-                await analyze_bot_mention(update, context)           
+                print("analyze_message > analyze_message_to_bot (Mention)")
+                await analyze_message_to_bot(update, context)           
             else:
                 print("analyze_message > analyze_regular_message")
                 await analyze_regular_message(update, context)
@@ -29,9 +36,43 @@ async def analyze_message(update, context):
         await notify_ben(update, context)
         return
 
+    
+async def update_user_record(context, user_id, chat_id):
+    try:
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        # Check if the user already exists in the users table
+        cursor.execute("SELECT first_name FROM users WHERE user_id = %s AND chat_id = %s", (user_id, chat_id))
+        result = cursor.fetchone()
+
+        if result is None:
+            # User doesn't exist, insert with first_name
+            first_name = await get_first_name(context, user_id)
+            cursor.execute("""
+                INSERT INTO users (user_id, chat_id, first_name)
+                VALUES (%s, %s, %s)
+            """, (user_id, chat_id, first_name))
+            print(f"Inserted new user with user_id: {user_id}, chat_id: {chat_id}, first_name: {first_name}")
+        elif result[0] is None:
+            # User exists but first_name is missing, update it
+            first_name = await get_first_name(context, user_id)
+            cursor.execute("""
+                UPDATE users
+                SET first_name = %s
+                WHERE user_id = %s AND chat_id = %s
+            """, (first_name, user_id, chat_id))
+            print(f"Updated first_name for user_id: {user_id}, chat_id: {chat_id} to {first_name}")
+        conn.commit()
+    except Exception as e:
+        print(f"Error updating user record: {e}")
+    finally:
+        cursor.close()
+        conn.close() 
+    
+    
+
 # nightly or catch-up reset        
 async def reset_goal_status(bot, chat_id):
-
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
@@ -275,7 +316,7 @@ async def check_use_of_special(update, context, special_type):
         await update.message.reply_text(f"🚫 {engager_name}, je hebt niet genoeg {special_type}! 🧙‍♂️")
         return False
     elif await check_special_balance(engager_id, chat_id, special_type) == "no inventory":
-        await update.message.reply_text(f"🚫 {engager_name}, je hebt je zaakjes nog niet voor elkaar. Stel anders eerst eventjes een doel in (/start) 🧙‍♂️")
+        await update.message.reply_text(f"🚫 {engager_name}, je hebt je zaakjes nog niet voor mekaar. Of beter gezegd: je loopt op je zaakjes vooruit (...allicht beter dan 'je zaakje achterna'..?).\n\nLang verhaal kort: stel eerst eventjes een doel in (/start) 🧙‍♂️")
         return False
     elif await check_identical_engagement(engager_id, engaged_id, special_type, chat_id):
         await update.message.reply_text(f"🚫 Je hebt al een {special_type_singular} uitstaan op {engaged_name}! 🧙‍♂️")
@@ -344,7 +385,7 @@ async def check_use_of_special(update, context, special_type):
         # await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
         print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
     else:
-        await update.message.reply_text(f"🚫 Uhhh.. staat deze persoon misschien (nog) niet in de database? 🧙‍♂️ \n(hij/zij moet in dat geval eerst een doel stellen)")  #77
+        await update.message.reply_text(f"🚫 Uhhh.. staat deze persoon misschien nog niet in de database? 🧙‍♂️ \n_(hij/zij moet in dat geval eerst even wat zeggen in deze chat)_", parse_mode="Markdown")  #77
         print(f"Engagement Failed op de valreep.")
   
         
@@ -544,7 +585,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text, f
                 if from_button:
                     await context.bot.send_message(
                     chat_id=chat_id, 
-                    text=f"Lekker bezig {first_name}! ✅ \n_+4 punten_", parse_mode="Markdown")
+                    text=f"Lekker bezig, {first_name}! ✅ \n_+4 punten_", parse_mode="Markdown")
                 if not from_button:
                     await update.message.reply_text("Lekker bezig! ✅ \n_+4 punten_"
                         , parse_mode="Markdown")
@@ -809,13 +850,12 @@ def check_live_engagement(cursor, user_id, chat_id, special_type=None):
 
 
 # Assistant_response == 'Meta'  (goal_text contains empty string if the user doesn't have one)
-async def handle_meta_remark(update, context, user_id, chat_id, goal_text):
+async def handle_meta_remark(update, context, user_id, chat_id, goal_text, bot_last_response=None):
     print("👀👀👀 Inside handle_meta_remark")
     # user_has_goal == True
     # if not goal_text:
     #     user_has_goal = False
     user_message = update.message.text
-    bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
     messages = await prepare_openai_messages(update, user_message, 'meta', goal_text, bot_last_response)
     assistant_response = await send_openai_request(messages, 'gpt-4o')
     await update.message.reply_text(assistant_response)
@@ -1742,19 +1782,28 @@ async def check_chat_owner(update: Update, context: CallbackContext):
 
 
 
-# Function to analyze replies to bot
-async def analyze_bot_reply(update, context):
+# Function to analyze replies and mentions to bot
+async def analyze_message_to_bot(update, context, type='mention'):
     user_message = update.message.text
     user_id = update.effective_user.id
     chat_id = update.effective_chat.id
-    bot_last_response = update.message.reply_to_message.text
-    goal_text = fetch_goal_text(update)
     first_name = update.effective_user.first_name
-    if len(update.message.text) > 1600:
+    
+    if len(user_message) > 1600:
         await update.message.reply_text(f"Hmpff {first_name}... TL;DR aub? 🧙‍♂️")
         return
+        
     try:
-        # Prepare and send OpenAI messages with bot_last_response
+        # Fetch goal_text if the user has a goal today
+        goal_text = fetch_goal_text(update)
+        goal_text = goal_text if goal_text else None
+        
+        # Check if the message is a reply to the bot
+        bot_last_response = None
+        if type == 'reply':
+            bot_last_response = update.message.reply_to_message.text
+        
+        # Prepare and send OpenAI messages
         class Classificatie(BaseModel):
             beredenering: str
             classificatie: Literal['Doelstelling', 'Klaar', 'Meta', 'Overig']
@@ -1770,106 +1819,50 @@ async def analyze_bot_reply(update, context):
         # Prepare and send OpenAI messages
         print(messages)
         assistant_response = await send_openai_request(messages, temperature=0.1, response_format=Classificatie)
-        print(f"analyze_bot_mention > classification: {assistant_response}")
+        print(f"analyze_message_to_bot > classification: {assistant_response}")
         classificatie = assistant_response.classificatie
-        print(f"analyze_bot_reply > classification: {assistant_response}")
+        print(f"analyze_message_to_bot > classification: {assistant_response}")
+        
         # Handle the OpenAI response
         goals_remaining = await fetch_weekly_goals_left(chat_id, user_id)
         print(f'goals_remaining: {goals_remaining}')
-        if classificatie == 'Doelstelling' and goals_remaining == 0:
-            await update.message.reply_text("🚫 Je kunt deze week geen doelen meer instellen 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown") 
-        elif classificatie == 'Doelstelling' and finished_goal_today(user_id, chat_id):
+        
+        if classificatie == 'Doelstelling' and finished_goal_today(user_id, chat_id):
             rand_value = random.random()
             # 4 times out of 5 (80%)
             if rand_value < 0.80:
-                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
+                await update.message.reply_text("🚫 Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
             # once every 6 times (16,67%)
             elif rand_value >= 0.8333:
-                await update.message.reply_text("Je hebt je doel al gehaald vandaag... STREBER! 😘")
+                await update.message.reply_text("🚫 Je hebt je doel al gehaald vandaag... STREBER! 😘")
             # once every 30 times (3,33%)    
             else:
-                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
+                await update.message.reply_text("🚫 Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
+        
         elif classificatie == 'Doelstelling' and has_goal_today(user_id, chat_id):
-            await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
+            await update.message.reply_text('🚫 Je hebt vandaag al een doel doorgegeven! 🐝')
         elif classificatie == 'Doelstelling' and goals_remaining == 0:
             await update.message.reply_text("🚫 Je kunt deze week geen doelen meer instellen 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
+            return
         elif classificatie == 'Doelstelling':
             if goals_remaining == 1:
                 await update.message.reply_text("Dit is je laatste dagdoel deze week 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
             await handle_goal_setting(update, user_id, chat_id)
-            print("analyze_bot_reply > handle_goal_setting")
+            print("analyze_message_to_bot > handle_goal_setting")
         elif classificatie == 'Klaar' and has_goal_today(user_id, chat_id):
             await handle_goal_completion(update, context, user_id, chat_id, goal_text)
-            print("analyze_bot_reply > handle_goal_completion")
+            print("analyze_message_to_bot > handle_goal_completion")
         elif classificatie == 'Meta':
-            await handle_meta_remark(update, context, user_id, chat_id, goal_text)
-            print("analyze_bot_reply > handle_meta_remark")   
+            await handle_meta_remark(update, context, user_id, chat_id, goal_text, bot_last_response)
+            print("analyze_message_to_bot > handle_meta_remark")   
         else:
             await handle_unclassified_mention(update)
-            print("analyze_bot_reply > handle_unclassified_mention")
+            print("analyze_message_to_bot > handle_unclassified_mention")
 
     except Exception as e:
         await update.message.reply_text("Er ging iets misss, probeer het later opnieuw.")
         print(f"Error: {e}")
 
-
-# Function to analyze @TakenTovenaar_bot mentions via OpenAI Chat API
-async def analyze_bot_mention(update, context):
-    user_message = update.message.text
-    user_id = update.effective_user.id
-    chat_id = update.effective_chat.id
-    first_name = update.effective_user.first_name
-    if len(update.message.text) > 1600:
-        await update.message.reply_text(f"Hmpff {first_name}... TL;DR aub? 🧙‍♂️")
-        return
-    try:
-        # Fetch goal_text if the user has a goal today, and use None if it's empty, for prepare_openai_messages
-        goal_text = fetch_goal_text(update)
-        goal_text=goal_text if goal_text else None
-
-        # Prepare and send OpenAI messages
-        class Classificatie(BaseModel):
-            beredenering: str
-            classificatie: Literal['Doelstelling', 'Klaar', 'Meta', 'Overig']
-            
-        messages = await prepare_openai_messages(update, user_message, message_type='classification', goal_text=goal_text)
-        print(messages)
-        assistant_response = await send_openai_request(messages, temperature=0.1, response_format=Classificatie)
-        print(f"analyze_bot_mention > classification: {assistant_response}")
-        classificatie = assistant_response.classificatie
-        print(f" classification: {classificatie}")
-        if classificatie == 'Doelstelling' and finished_goal_today(user_id, chat_id):
-            
-            rand_value = random.random()
-            # 4 times out of 5 (80%s)
-            if rand_value < 0.80:
-                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Morgen weer een dag! 🐝")
-            # once every 6 times (16,67%s)
-            elif rand_value >= 0.8333:
-                await update.message.reply_text("Je hebt je doel al gehaald vandaag... STREBER! 😘")
-            # once every 30 times (3,33%s)    
-            else:
-                await update.message.reply_text("Je hebt je doel al gehaald vandaag. Verspilling van moeite dit. En van geld. Graag €0,01 naar mijn schepper, B. ten Berge:\nDE13 1001 1001 2622 7513 46 💰")
-        elif classificatie == 'Doelstelling' and has_goal_today(user_id, chat_id):
-            await update.message.reply_text('Je hebt vandaag al een doel doorgegeven! 🐝')
-        elif classificatie == 'Doelstelling':
-            if goals_remaining == 1:
-                await update.message.reply_text("Dit is je laatste dagdoel deze week 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
-
-            await handle_goal_setting(update, user_id, chat_id)
-            print("analyze_bot_mention > handle_goal_setting")
-        elif classificatie == 'Klaar' and has_goal_today(user_id, chat_id):
-            await handle_goal_completion(update, context, user_id, chat_id, goal_text)
-            print("analyze_bot_mention > handle_goal_completion")
-        elif classificatie == 'Meta':
-            await handle_meta_remark(update, context, user_id, chat_id, goal_text)
-        else:
-            await handle_unclassified_mention(update)
-            print("analyze_bot_mention > unclassified_mention")
-
-    except Exception as e:
-        await update.message.reply_text("Er ging iets mis, probeer het later opnieuw.")
-        print(f"Error: {e}")
 
 # Analyze a regular message, to see if it's maybe trying to set or complete goals 
 async def analyze_regular_message(update, context):
