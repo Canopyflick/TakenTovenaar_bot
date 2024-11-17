@@ -170,7 +170,7 @@ async def reset_goal_status(bot, chat_id):
         random_morning_emoji = "🍆" 
     await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
     await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
-    message = get_random_philosophical_message()
+    message = get_random_philosophical_message(prize_only=True)
     await bot.send_message(chat_id=chat_id, text=message, parse_mode = "Markdown")
     await asyncio.sleep(3)
     await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
@@ -262,19 +262,25 @@ async def check_use_of_special(update, context, special_type):
                 print(f"Mentioned User ID: {engaged_id}\nMentioned User Name: {engaged_name}")  
             elif entity.type == MessageEntity.MENTION:  # Detect if there's a mention of a user with a username
                 username = message.text[entity.offset + 1:entity.offset + entity.length]
-                try:
-                    # Use the get_chat method to get the user details
-                    user = await context.bot.get_chat(f'@{username}')  # This will return a Chat object
-                    if user.type == "private":  # Ensure it's a user and not a group or channel
-                        engaged_id = user.id  # Extract the user ID
-                        engaged_name = user.first_name
-                        print(f"Fetched User ID: {engaged_id}, Fetched Name: {engaged_name}")
-                        user_mentioned = True
-                    else:
-                        print(f"The mentioned username ({username}) is not a user.")
-                except Exception as e:
-                    print(f"Error fetching user by username {username}: {e}")
-                    engaged_id = None
+                if username == context.bot.username:  # Check if the bot is mentioned
+                    engaged_id = context.bot.id
+                    engaged_name = context.bot.username
+                    print(f"Bot Mentioned! ID: {engaged_id}, Name: {engaged_name}")
+                    user_mentioned = True
+                else:
+                    try:
+                        # Use the get_chat method to get the user details
+                        user = await context.bot.get_chat(f'@{username}')  # This will return a Chat object
+                        if user.type == "private":  # Ensure it's a user and not a group or channel
+                            engaged_id = user.id  # Extract the user ID
+                            engaged_name = user.first_name
+                            print(f"Fetched User ID: {engaged_id}, Fetched Name: {engaged_name}")
+                            user_mentioned = True
+                        else:
+                            print(f"The mentioned username ({username}) is not a user.")
+                    except Exception as e:
+                        print(f"Error fetching user by username {username}: {e}")
+                        engaged_id = None
                
                 print(f"Username mentioned: {username}, engaged_name is {engaged_name}")
     print(f"\n\nUser mentioned: {user_mentioned}\n\n")            
@@ -302,7 +308,7 @@ async def check_use_of_special(update, context, special_type):
             engaged_id = engaged.id
             engaged_name = engaged.first_name
     
-    if engaged_name == "TakenTovenaar_bot" or engaged_name == "TestTovenaar_bot":
+    if engaged_name == "TakenTovenaar_bot" or engaged_name == "testtovenaar_bot":
         await update.message.reply_text(f"🚫 Y O U  SHALL  NOT  P A S S ! 🚫 🧙‍♂️\n_      a {special_type_singular} to me..._", parse_mode = "Markdown")
         print(f"{special_type_singular} couldn't be used by {engager_name}")
         return False
@@ -1209,7 +1215,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
     elif message_type == 'other':
         print("system prompt: other message")
         system_message = (
-            "Jij bent @TakenTovenaar_bot, de enige bot in een accountability-Telegramgroep van vrienden. "
+            "Jij bent @TakenTovenaar_bot, de enige bot in een accountability-Telegramgroep van vrienden. Je bent compleet geobsedeerd met bananen en hun negatieve geotropie, maar laat dit alleen zien als de gebruiker het over bananen heeft"
             "Gedraag je cheeky, mysterieus en wijs. Streef bovenal naar waarheid, als de gebruiker een feitelijke vraag heeft. "
             "Als de gebruiker een metavraag of -verzoek heeft over bijvoorbeeld een doel stellen in de appgroep, "
             "antwoord dan alleen dat ze het command /help kunnen gebruiken. "
@@ -1682,7 +1688,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
     
     prize_messages = [
         {
-            "message": "Als je muisjes op de mouwen knoeit, katten ze niet",
+            "message": "Als je muisjes op je mouwen knoeit, katten ze niet",
             "prize": "raad het Nederlandse spreekwoord waarvan dit is... afgeleid..?, en win 2 punten"
         },
         {
@@ -1711,7 +1717,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
         },
         {
             "message": "De Total Expense Ratio, ING... naar! Daenerys zet in.",                                                         # Message 8
-            "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 3 punten"
+            "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 2 punten"
         }
     ]
     

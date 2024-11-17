@@ -300,7 +300,7 @@ async def handle_challenge_response(update, context):
         if "Query is too old" in str(e):
             await query.edit_message_text(f"De tijd om te reageren op deze uitdaging is bij deze dan voorbij ([{engaged_name}](tg://user?id={engaged_id}))🧙‍♂️", parse_mode = "Markdown")
         else:
-            await query.answer(text="Hm foutje 🧙‍♂️ Misschien moet je nog je eerste bericht in de chat sturen?", show_alert=True)
+            await query.answer(text="Hm foutje 🧙‍♂️ ???", show_alert=True)
             print(f"Er is een fout opgetreden accepterende: {e}")
     finally:
         cursor.close()
