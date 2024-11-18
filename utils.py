@@ -6,6 +6,7 @@ from telegram.ext import CallbackContext, ContextTypes
 from typing import Literal
 from pydantic import BaseModel
 from handlers.weekly_poll import retrieve_poll_results
+from telegram.constants import ChatAction
 
 
 # First orchestration: function to analyze any chat message, and check whether it replies to the bot, mentions it, or neither
@@ -169,6 +170,7 @@ async def reset_goal_status(bot, chat_id):
     if random.random() < 0.02:
         random_morning_emoji = "🍆" 
     await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
+    await bot.send_chat_action(chat_id, action=ChatAction.TYPING)
     await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
     message = get_random_philosophical_message(prize_only=True)
     await bot.send_message(chat_id=chat_id, text=message, parse_mode = "Markdown")
@@ -539,7 +541,7 @@ async def handle_goal_setting(update, user_id, chat_id):
 
 async def check_goal_compatibility(update, goal_text, user_message):
     messages = [
-                {"role": "system", "content": "Controleer of een bericht zou kunnen rapporteren over het succesvol uitvoeren van een gesteld doel. Zijn doel en bericht compatibel met elkaar? Antwoord alleen met 'Ja' of 'Nee'."},
+                {"role": "system", "content": "Controleer of een bericht zou kunnen rapporteren over het succesvol uitvoeren van een gesteld doel. Zijn doel en bericht compatibel met elkaar? Het bericht 'Klaar' is bijvoorbeeld compatibel met (bijna) ieder doel. Maar het bericht 'De bananen zijn gepeld' is niet compatibel met het doel 'Ik wil vandaag m'n huiswerk maken', maar wel met het doel 'Ik wil vandaag bananen pellen'. Antwoord alleen met 'Ja' of 'Nee'."},
                 {"role": "user", "content": f"Het gestelde doel is: {goal_text} En het bericht is: {user_message}"}
             ]
     assistant_response = await send_openai_request(messages, temperature=0.1)
