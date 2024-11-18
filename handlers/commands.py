@@ -63,10 +63,14 @@ async def stats_command(update: Update, context):
     if message.entities:
         for entity in message.entities:
             if entity.type == "text_mention":  # Detect if it's a direct user mention
-                mentioned_user_id = entity.user.id  # Extract the mentioned user's ID
-                print(f"User ID: {mentioned_user_id}")
-                user_id = mentioned_user_id
-                first_name = entity.user.first_name
+                if await check_chat_owner(update, context):
+                    mentioned_user_id = entity.user.id  # Extract the mentioned user's ID
+                    print(f"User ID: {mentioned_user_id}")
+                    user_id = mentioned_user_id
+                    first_name = entity.user.first_name
+                else:
+                    await update.message.reply_text("Dat mag jij niet xx 🧙‍♂️")
+                    return
         
     # Fallback: If no mentions, use the command caller's ID and name
     if user_id is None:

@@ -1,5 +1,6 @@
 ﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import json, asyncio, re, random, pprint
 from telegram import Update, MessageEntity
 from telegram.ext import CallbackContext, ContextTypes
@@ -502,7 +503,7 @@ async def handle_goal_setting(update, user_id, chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
-        set_time = datetime.now(tz=timezone.utc)
+        set_time = datetime.now(tz=ZoneInfo("Europe/Berlin"))
         cursor.execute('''
                         UPDATE users 
                         SET today_goal_status = 'set',
@@ -1216,7 +1217,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         Als hun doel bijvoorbeeld was om de afwas te doen, dan moet je 'het afdruiprekje is vol' als 'Klaar' classificeren. Maar als hun doel was om 10km te hardlopen, dan niet.
 
         ## Meta
-        Als de gebruiker een vraag stelt over jou zelf als bot of over de groep. Voorbeelden van meta-vragen: 
+        Als de gebruiker een vraag stelt over jou zelf als bot of over hoe dingen werken in de chatgroep. Voorbeelden van meta-vragen: 
         'Wie heeft de meeste punten?', 'Waarom weet jij niks over Fitrie's doel?', of 'Wanneer krijgen we weer nieuwe boosts/links/challenges?'.
 
         ## Overig
@@ -1451,8 +1452,8 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         if any(word in user_message.lower() for word in ['bananen', 'banaan']):
             print(f"We zijn nu in meta-bananenland!\n ({user_message})")
             system_message += """
-            \n\n Ohja... je kunt trouwens niet ophouden met praten over BANANEN!
-            Je houdt in het bijzonder van hun NEGATIEVE GEOTROPIE! (Je bananenobsessie komt trouwens doordat je als kind ooit in een blender met banaansmoothie (+ bananenconcentraat) bent gevallen).
+            \n\n\n P.S: Ohja... je kunt trouwens niet ophouden met praten over BANANEN!
+            Je houdt in het bijzonder van hun NEGATIEVE GEOTROPIE! (Je bananenobsessie komt doordat je als kind ooit in een blender met banaansmoothie (+ bananenconcentraat) bent gevallen).
             """
 
     messages = [{"role": "system", "content": system_message}]        
@@ -1753,7 +1754,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
     ]
     
     # New message to append to each prize submessage
-    additional_message = "(prijsuitreiking door Ben)"
+    additional_message = " (prijsuitreiking door Ben)"
 
     # Loop through each dictionary in the list and modify the 'prize' value
     for prize_message in prize_messages:
