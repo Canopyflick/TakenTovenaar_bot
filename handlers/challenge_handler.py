@@ -207,7 +207,7 @@ async def handle_challenge_response(update, context):
                     if await check_identical_engagement(engager_id, engaged_id, "challenges", chat_id):
                         emojis = await fetch_live_engagements(chat_id, engaged_id=engaged_id)
                         if "😈" in emojis:
-                            await query.answer(text=f"🚫 Jij hebt vandaag al een uitdaging geaccepteerd, no takesie backsies 🧙‍♂️ (zie /stats voor je doel)", show_alert=True)
+                            await query.answer(text=f"🚫 Jij hebt vandaag al een uitdaging geaccepteerd, no Take-backsies 🧙‍♂️ (zie /stats voor je doel)", show_alert=True)
                             return
                         else:
                             await query.answer(text=f"🚫 Er staat nog een persoonlijk uitdagingsverzoek van {engager_name} naar jou uit, dat je eerst moet afwijzen voordat je deze open uitdaging kunt aannemen 🧙‍♂️", show_alert=True)

@@ -146,7 +146,8 @@ async def create_weekly_goals_poll(context, chat_id):
         print(f"\n\n|||||||||||| Creating weekly poll...\nfor chat_id     {chat_id}🧙‍♂️|||||||||||||||||||||||\n")            
         selected_goals = await prepare_weekly_goals_poll(chat_id)
         if selected_goals == 'too few goals this week':
-            return # cancel the poll
+            print("too few goals so far")
+            return  # cancel the poll (verder niks, want dat zou spam zijn in groepen waar niks gebeurt)
         # Create poll options, adding number prefixes for easier reference
         poll_options = [f"{i+1}. {goal}" for i, goal in enumerate(selected_goals)]
         

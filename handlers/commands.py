@@ -533,6 +533,7 @@ async def link_command(update, context):
 async def ranking_command(update, context):
     if await check_chat_owner(update, context):
         chat_id = update.message.chat.id
+        print(f"Ben vraagt ranking op in chat: {chat_id}")
 
         # SQL query to fetch first names and scores for the current chat
         query = """
@@ -564,7 +565,7 @@ async def ranking_command(update, context):
                 first_name = first_name or "Onbekende gebruiker"  # Fallback if first_name is NULL
                 ranking_message += f"{rank}. {first_name}: {score}\n"
 
-            # Send the ranking message
+            # Send the ranking message            
             await asyncio.sleep(1)   
             await context.bot.send_chat_action(chat_id, action=ChatAction.TYPING)
             await asyncio.sleep(7)    

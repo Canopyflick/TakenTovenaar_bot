@@ -878,7 +878,11 @@ async def handle_unclassified_mention(update):
     goal_text = fetch_goal_text(update)
     goal_text = goal_text if goal_text else None
     bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
-    
+    # Make sure Taeke doesn't respond if user responds to a challenge
+    if bot_last_response:
+        if "prijsuitreiking door Ben" in bot_last_response:
+            print(f"reponse to:\n {bot_last_response}")
+            return
     messages = await prepare_openai_messages(update, user_message, 'other', goal_text, bot_last_response)
     assistant_response = await send_openai_request(messages, "gpt-4o")
     await update.message.reply_text(assistant_response)
@@ -995,6 +999,11 @@ async def complete_new_engagement(update, engager_id, engaged_id, chat_id, speci
     except Exception as e:
         print(f"Error completing engagement: {e}")
         conn.rollback()
+        if "unique constraint" in e:
+            await update.message.reply_text(
+            "This engagement already exists. You cannot duplicate it!"
+            )
+            return
         return False
     finally: 
         cursor.close()
@@ -2226,7 +2235,7 @@ async def giv_specials(update, context, special_type, for_all=False):
 
                 # Fetch updated inventories
                 updated_inventories = cursor.fetchall()
-                print(f"updated inventories: {updated_inventories}")
+                print(f"updated inventories for chat {chat_id}: {updated_inventories}")
                 
             conn.commit()
 
