@@ -267,7 +267,7 @@ async def fetch_goal_setters(cursor, chat_id):
         AND weekly_goals_left >= %s
         AND today_goal_status = 'not set'
     '''
-    cursor.execute(query, (chat_id, last_3_days))
+    cursor.execute(query, (chat_id, remaining_days))
     # 3 users would look like this: [(123456,), (789012,), (345678,)]
     
     result = cursor.fetchall()

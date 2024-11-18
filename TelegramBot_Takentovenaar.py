@@ -328,7 +328,7 @@ async def setup(application):
         
         # Schedule the daily reminders jobs 
         from handlers.reminders import prepare_daily_reminders
-        reminder_time_early = time(hour=16, minute=45, second=00, tzinfo=BERLIN_TZ)  
+        reminder_time_early = time(hour=16, minute=50, second=00, tzinfo=BERLIN_TZ)  
         reminder_time_late = time(hour=22, minute=00, second=00, tzinfo=BERLIN_TZ)     
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_early)
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_late)
