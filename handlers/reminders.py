@@ -79,6 +79,8 @@ async def prepare_daily_reminders(context, chat_id=None):
         class DailyReminders(BaseModel):
             reminders: list[Reminder]
         
+        time_now = datetime.now(tz=BERLIN_TZ)
+
         try:
             first_name='first_name'
             user_id='user_id'
@@ -87,7 +89,7 @@ async def prepare_daily_reminders(context, chat_id=None):
                     "role": "system",
                     "content": f"""
                     Jij bent TakenTovenaar_bot, actief in een telegramgroep om het stellen van doelen te faciliteren. Je bent cheeky, mysterieus, en bovenal wijs. 
-                    Bekijk de aangeleverder data van een of meer gebruikers die eerder vandaag een doel instelden, en bereid per gebruiker een gepersonaliseerde reminder voor ze voor (goal_progress_inquiry), om ze te vragen of ze al klaar zijn met hun doel vandaag. Verwerk hierin altijd een 🧙‍♂️-emoji en een tag van de user: [{first_name}](tg://user?id={user_id}).
+                    Bekijk de aangeleverder data van een of meer gebruikers die eerder vandaag een doel instelden, en bereid per gebruiker een gepersonaliseerde reminder voor ze voor (goal_progress_inquiry), om ze te vragen of ze al klaar zijn met hun doel vandaag. Verwerk hierin altijd een 🧙‍♂️-emoji en een tag van de user: '[{first_name}](tg://user?id={user_id})'.
                     Los van een passend reminderberichtje, in lijn met het doel dat ze zich vandaag gesteld hadden (today_goal_text), bepaal je ook een geschikte timing van deze reminder. Ofwel nu meteen (send_now), ofwel later vandaag (send_later), direct nadat je denkt dat de gebruiker het doel af moet hebben.
                     """
                 },
@@ -177,7 +179,7 @@ async def send_daily_reminder(context, chat_id, goal_setters=None, completion_re
             inquiry_text = completion_reminder.goal_progress_inquiry
             # Create the buttons
             button_complete = InlineKeyboardButton(text="✅ Klaar!", callback_data=f"klaar_{user_id}_{first_name}")
-            button_no = InlineKeyboardButton(text="❌ Nog niet klaar", callback_data=f"nee_{user_id}_{first_name}")
+            button_no = InlineKeyboardButton(text="❌ (Nog) niet", callback_data=f"nee_{user_id}_{first_name}")
             # Add both buttons in the same row
             keyboard = InlineKeyboardMarkup([[button_complete, button_no]])
             await context.bot.send_chat_action(chat_id, action=ChatAction.TYPING)
@@ -195,34 +197,57 @@ async def handle_goal_completion_reminder_response(update, context):
     user_id = query.from_user.id
     callback_data = query.data.split('_')  # ['completion', user_id]
     print(f"callback data = {callback_data}")
-    target_user_id = callback_data[1]
+    target_user_id = int(callback_data[1])
     targeted_first_name = callback_data[2]
-    if user_id == target_user_id or await check_chat_owner(update, context):
+    
+    # Initialize or fetch the counter for the "Nee" button
+    if user_id not in context.bot_data.get("nee_press_count", {}):
+        context.bot_data.setdefault("nee_press_count", {})[user_id] = 0
+
+    if user_id == target_user_id:    # or await check_chat_owner(update, context):
         # button presser == targeted user, or chat owner
         goal_text = fetch_goal_text(update)
         if callback_data[0] == 'klaar':
             await query.answer(text=f"🎉", show_alert=True)
+            await asyncio.sleep(2)
             await query.message.delete()
             await handle_goal_completion(update, context, target_user_id, chat_id, goal_text, from_button=True, first_name=targeted_first_name)
         elif callback_data[0] == 'nee':
-            await query.answer(text=f"Stel evt. met /reset nog een ander doel in vandaag 🧙‍♂️", show_alert=False)
-            from utils import prepare_openai_messages, send_openai_request
-            messages = await prepare_openai_messages(update, user_message=None, message_type="grandpa quote", goal_text=goal_text)
-            grandpa_quote = await send_openai_request(messages, "gpt-4o")
-            grandpa_quote = grandpa_quote.strip('"')
-            await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-            await context.bot.send_message(chat_id=chat_id, text=f"_{targeted_first_name} heeft hun doel nog niet af_\n\nGeen zorgen, doe het morgen 🧙‍♂️\nOf, zoals mijn opa zou zeggen:", parse_mode="Markdown")
-            random_delay = random.uniform(1, 10)
-            await asyncio.sleep(random_delay)
-            await context.bot.send_message(chat_id=chat_id, text=f"_{grandpa_quote}_", parse_mode="Markdown")
+            context.bot_data["nee_press_count"][user_id] += 1  # Increment the counter
+            if context.bot_data["nee_press_count"][user_id] > 4:
+                return
+            if context.bot_data["nee_press_count"][user_id] > 3:
+                await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+                await asyncio.sleep(12)
+                await context.bot.send_message(chat_id=chat_id, text=f"Ik ben er (wel) klaar mee 🧙‍♂️", parse_mode="Markdown")
+            # 1st-3rd time 
+            else:
+                from utils import delete_message, prepare_openai_messages, send_openai_request
+                messages = await prepare_openai_messages(update, user_message=None, message_type="grandpa quote", goal_text=goal_text)
+                grandpa_quote = await send_openai_request(messages, "gpt-4o")
+                grandpa_quote = grandpa_quote.strip('"')
+                random_delay = random.uniform(1, 10)
+                
+                if context.bot_data["nee_press_count"][user_id] == 1:
+                    hot_tip = await context.bot.send_message(
+                        chat_id=query.message.chat.id,
+                        text="(Als je wilt, kun je met /reset nog van doel wisselen vandaag 🧙‍♂️)"
+                    )
+                    await asyncio.sleep(1)
+                    await context.bot.send_message(chat_id=chat_id, text=f"({targeted_first_name} heeft hun doel nog niet af)\n\nGeen zorgen, doe het morgen 🧙‍♂️\n\nOf, zoals mijn opa zou zeggen:", parse_mode="Markdown")
+                    # Schedule the deletion of the message as a background task
+                    asyncio.create_task(delete_message(context, chat_id, hot_tip.message_id, delay=20))               
+                await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
+                await asyncio.sleep(random_delay)
+                await context.bot.send_message(chat_id=chat_id, text=f"✨_{grandpa_quote}_✨", parse_mode="Markdown")
         else:
             print(f"iets goed mis met callback-data")
-    # button presser != targeted user, nor chat owner
+    # button presser != targeted user, ## nor chat owner
     else:
-        if not await check_chat_owner(update, context):
-            await query.answer(text=f"Mjeh dat moet {targeted_first_name} toch zelf doen xx 🧙‍♂️", show_alert=True)
-            print(f"{user_id} probeerde handle_goal_completion_reminder_response te gebruiken voor: {targeted_first_name}")
-            return
+        #if not await check_chat_owner(update, context):
+        await query.answer(text=f"Mjeh dat moet {targeted_first_name} toch zelf doen xx 🧙‍♂️", show_alert=True)
+        print(f"{user_id} probeerde handle_goal_completion_reminder_response te gebruiken voor iemand anders, namelijk: {targeted_first_name}({target_user_id})")
+        return
                 
 
     
@@ -249,8 +274,6 @@ async def fetch_goal_setters(cursor, chat_id):
     """
     Fetch users who need to set new goals based on the criteria:
     - No pending goal for today.
-    - Remaining goals this week >= remaining days this week until Sunday (aka: should set a goal every day if they wanna finish their weekly goals this week).
-    - Have set a goal in the past 3 days. (aka: active users)
     """
     print(f"\n\nEn we zijn in fetch_goal_setters\n\n")
     today = datetime.now(tz=BERLIN_TZ).date()
@@ -264,10 +287,9 @@ async def fetch_goal_setters(cursor, chat_id):
         SELECT user_id
         FROM users
         WHERE chat_id = %s
-        AND weekly_goals_left >= %s
         AND today_goal_status = 'not set'
     '''
-    cursor.execute(query, (chat_id, remaining_days))
+    cursor.execute(query, (chat_id,))
     # 3 users would look like this: [(123456,), (789012,), (345678,)]
     
     result = cursor.fetchall()

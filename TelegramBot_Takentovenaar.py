@@ -328,7 +328,7 @@ async def setup(application):
         
         # Schedule the daily reminders jobs 
         from handlers.reminders import prepare_daily_reminders
-        reminder_time_early = time(hour=16, minute=50, second=00, tzinfo=BERLIN_TZ)  
+        reminder_time_early = time(hour=19, minute=30, second=00, tzinfo=BERLIN_TZ)  
         reminder_time_late = time(hour=22, minute=00, second=00, tzinfo=BERLIN_TZ)     
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_early)
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_late)
@@ -345,7 +345,7 @@ async def setup(application):
         print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every WEDNESDAY??")
 
         from utils import get_last_reset_time
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=BERLIN_TZ)
 
         # Define scheduled reset time 
         reset_time_today = now.replace(hour=3, minute=0, second=0, microsecond=0, tzinfo=BERLIN_TZ)
@@ -373,7 +373,7 @@ async def setup(application):
         for chat_id in chat_ids:
             last_reset = get_last_reset_time(chat_id)
             if last_reset is not None and last_reset.tzinfo is None:
-                last_reset = last_reset.replace(tzinfo=timezone.utc)
+                last_reset = last_reset.replace(tz=BERLIN_TZ)
                 
             print(f"\nLast reset time : {last_reset} for chat {chat_id}")
             print(f"Current time    : {now}")

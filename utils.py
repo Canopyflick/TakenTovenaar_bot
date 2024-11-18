@@ -642,8 +642,10 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text, f
                 engager_name = await get_first_name(context, engager_id)
                 if bonus >0:
                     completion_message += f"\n_+{bonus} voor {engager_name}_"  # Append each engager's name and bonus
-                    
-            await update.message.reply_text(completion_message, parse_mode = "Markdown")
+            if from_button:
+                    await context.bot.send_message(chat_id, text=completion_message, parse_mode="Markdown")
+            if not from_button:
+                await update.message.reply_text(completion_message, parse_mode = "Markdown")
             # Lastly, transition any pending links to live - for completions with existing live engagements
             await advance_links_status(cursor, conn, chat_id, user_id)
 
