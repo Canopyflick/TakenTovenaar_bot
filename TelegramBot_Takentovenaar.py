@@ -138,30 +138,31 @@ try:
     ''', (four_am_last_night,))
     conn.commit()
 
-    #3 engagements table
+    # 3 engagements table
     try:
         cursor.execute('''
-        CREATE TABLE IF NOT EXISTS engagements (
-            id BIGSERIAL PRIMARY KEY,
-            engager_id BIGINT NOT NULL,
-            engaged_id BIGINT,
-            chat_id BIGINT NOT NULL,
-            special_type TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            status TEXT DEFAULT 'live', -- either 'pending', 'live', 'archived_done' or 'archived_unresolved'
-            UNIQUE (engager_id, engaged_id, special_type, chat_id),
-            FOREIGN KEY (engager_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
-            FOREIGN KEY (engaged_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE
-        );
-        CREATE UNIQUE INDEX IF NOT EXISTS unique_active_engagements
-        ON engagements(engager_id, engaged_id, special_type, chat_id)
-        WHERE status IN ('live', 'pending');               
-
+            CREATE TABLE IF NOT EXISTS engagements (
+                id BIGSERIAL PRIMARY KEY,
+                engager_id BIGINT NOT NULL,
+                engaged_id BIGINT,
+                chat_id BIGINT NOT NULL,
+                special_type TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                status TEXT DEFAULT 'live', -- either 'pending', 'live', 'archived_done' or 'archived_unresolved'
+                FOREIGN KEY (engager_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
+                FOREIGN KEY (engaged_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE
+            );
+        ''')
+        cursor.execute('''
+            CREATE UNIQUE INDEX IF NOT EXISTS unique_active_engagements
+            ON engagements(engager_id, engaged_id, special_type, chat_id)
+            WHERE status IN ('live', 'pending');
         ''')
         conn.commit()
     except Exception as e:
-        print(f"Error creating engagements table: {e}")
+        print(f"Error creating engagements table or index: {e}")
         conn.rollback()
+
 
     # Add missing columns
     add_missing_columns(cursor, 'users', desired_columns_users)

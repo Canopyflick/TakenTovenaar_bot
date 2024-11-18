@@ -7,6 +7,8 @@ from typing import Literal
 from pydantic import BaseModel
 from handlers.weekly_poll import retrieve_poll_results
 from telegram.constants import ChatAction
+from psycopg2.errors import UniqueViolation
+
 
 
 # First orchestration: function to analyze any chat message, and check whether it replies to the bot, mentions it, or neither
@@ -387,10 +389,9 @@ async def check_use_of_special(update, context, special_type):
         escaped_engaged_name = escape_markdown_v2(engaged_name)
         await context.bot.send_message(chat_id=chat_id, text =f"{escaped_engager_name} {special_type} [{escaped_engaged_name}](tg://user?id={engaged_id}) 🧙‍♂️"
                                         , parse_mode="MarkdownV2")
-        if special_type == 'links':
-            await context.bot.send_message(chat_id=chat_id, text =f"_Beide winnen 2 bonuspunten als beide hun doel halen. Zo niet, dan verliest {escaped_engager_name} 1 punt_", parse_mode = "Markdown")
-            
-        # await update.message.reply_text(f"{engager_name} {special_type} {engaged_name}! 🧙‍♂️")
+        # if special_type == 'links':
+        #     await context.bot.send_message(chat_id=chat_id, text =f"_Beide winnen 2 bonuspunten als beide hun doel halen. Zo niet, dan verliest {escaped_engager_name} 1 punt_", parse_mode = "Markdown")
+        
         print(f"\n\n*  *  *  Completing Engagement  *  *  *\n\n{engager_name} {special_type} {engaged_name}\n\n")
     else:
         await update.message.reply_text(f"🚫 Uhhh.. staat deze persoon misschien nog niet in de database? 🧙‍♂️ \n_(hij/zij moet in dat geval eerst even wat zeggen in deze chat)_", parse_mode="Markdown")  #77
@@ -999,12 +1000,15 @@ async def complete_new_engagement(update, engager_id, engaged_id, chat_id, speci
     except Exception as e:
         print(f"Error completing engagement: {e}")
         conn.rollback()
-        if "unique constraint" in e:
+
+        # Convert the error to a string and check for specific text
+        error_message = str(e)
+        if "unique constraint" in error_message:
             await update.message.reply_text(
-            "This engagement already exists. You cannot duplicate it!"
+                "🚫 Er staat waarschijnlijk ten onrechte al/nog een zelfde actie op deze persoon uit 🐛🧙‍♂️\n(moet Ben fiksen)"
             )
-            return
         return False
+
     finally: 
         cursor.close()
         conn.close()
@@ -1749,7 +1753,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
     ]
     
     # New message to append to each prize submessage
-    additional_message = "\n\n(Taeke weet hier niets van, prijsuitreiking door Ben)"
+    additional_message = "(prijsuitreiking door Ben)"
 
     # Loop through each dictionary in the list and modify the 'prize' value
     for prize_message in prize_messages:
