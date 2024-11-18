@@ -92,6 +92,8 @@ async def prepare_weekly_goals_poll(chat_id):
     
     goals = [row[0] for row in cursor.fetchall()]
     print(f"goals =\n\n{goals}\n")
+    print(f"Number of goals = {len(goals)}")  # Debugging print
+
     if len(goals) <= 2:
         return 'too few goals this week' # If fewer than 3 goals, cancel the poll in create weekly_goals_poll function
         

@@ -461,14 +461,29 @@ async def handle_admin(update, context, type, amount=None):
                 UPDATE users 
                 SET today_goal_status = 'set', 
                     completed_goals = completed_goals - 1,
-                    score = score - 4
+                    score = score - 4,
+                    weekly_goals_left = weekly_goals_left + 1
                 WHERE user_id = %s AND chat_id = %s
             ''', (user_id, chat_id))
+
+            # Delete the corresponding goal from goal_history using a CTE
+            cursor.execute('''
+                WITH recent_goal AS (
+                    SELECT id
+                    FROM goal_history
+                    WHERE user_id = %s AND chat_id = %s
+                    ORDER BY completion_time DESC
+                    LIMIT 1
+                )
+                DELETE FROM goal_history
+                WHERE id IN (SELECT id FROM recent_goal);
+            ''', (user_id, chat_id))
+        
             conn.commit()
             await update.message.reply_text(f"Whoops ❌ \nTaeke Takentovenaar draait voltooiing van {first_name} terug 🧙‍♂️\n_-4 punten, doelstatus weer: 'ingesteld'_"
                                     , parse_mode="Markdown")
         except Exception as e:
-            print(f"Error updating user score handling admin: {e}")    
+            print(f"Error updating user stats handling admin for revert: {e}")    
             conn.rollback()
     else:
        special_type = type

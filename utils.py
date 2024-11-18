@@ -1465,14 +1465,14 @@ async def collect_meta_data(user_id, chat_id):
 
         # 1. Query to fetch user stats from the users table
         cursor.execute('''
-            SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text, inventory
+            SELECT total_goals, completed_goals, score, today_goal_status, today_goal_text, inventory, weekly_goals_left
             FROM users
             WHERE user_id = %s AND chat_id = %s;
         ''', (user_id, chat_id))
         user_data = cursor.fetchone()
         
         if user_data:
-            total_goals, completed_goals, score, today_goal_status, today_goal_text, inventory = user_data
+            total_goals, completed_goals, score, today_goal_status, today_goal_text, inventory, weekly_goals_left = user_data
         else:
             return "No user data found."
 
@@ -1525,6 +1525,7 @@ async def collect_meta_data(user_id, chat_id):
             "today_goal_status": today_goal_status,
             "today_goal_text": today_goal_text,
             "inventory": inventory,
+            "weekly_goals_left": weekly_goals_left,
             "live_engagements": live_engagements,
             "last_reset_time": last_reset_time,
             "recent_goals": recent_goals,
@@ -1946,7 +1947,7 @@ async def handle_regular_message(update, context):
         await roll_dice(update, context)
 
     # bananen
-    elif any(word in user_message.lower() for word in ["bananen", "banaan", "appel", "fruit", "apen", "aap", "ernie", "lekker", "Raven", "Nino"]):
+    elif any(word in user_message.lower() for word in ["bananen", "banaan", "appel", "fruit", "apen", "aap", "ernie", "lekker", "Raven", "Nino", "dan"]):
         reaction = "🍌"
         if "krom" in user_message.lower():
             reaction = "👀"
