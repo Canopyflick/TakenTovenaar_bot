@@ -1749,12 +1749,12 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
         },
         {
             "message": "De Total Expense Ratio, ING... naar! Daenerys zet in.",                                                         # Message 8
-            "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins acrobatisch is afgeleid, en win 2 punten"
+            "prize": "raad het Nederlandse spreekwoord waarvan dit toch echt enigszins is afgeleid, en win 2 punten"
         }
     ]
     
     # New message to append to each prize submessage
-    additional_message = " (prijsuitreiking door Ben)"
+    additional_message = "\n(prijsuitreiking door Ben)"
 
     # Loop through each dictionary in the list and modify the 'prize' value
     for prize_message in prize_messages:

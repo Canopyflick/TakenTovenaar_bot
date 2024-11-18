@@ -2,6 +2,7 @@
 from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status, update_user_record
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
+from zoneinfo import ZoneInfo
 import asyncio, random, re
 
 
@@ -117,7 +118,8 @@ async def stats_command(update: Update, context):
             
             if set_time:
                 set_time = set_time[0]
-                formatted_set_time = set_time.strftime("%H:%M")
+                set_time_europe = set_time.astimezone(ZoneInfo("Europe/Berlin"))
+                formatted_set_time = set_time_europe.strftime("%H:%M")
             live_engagements_engaged = await fetch_live_engagements(chat_id, engaged_id=user_id)
             pending_engagements = await fetch_live_engagements(chat_id, status='pending', engager_id=user_id, engaged_id=user_id)
             # Check if user is live-engaged or has a pending link (either as engaged or engager) aka: needs to see emojis in stats)

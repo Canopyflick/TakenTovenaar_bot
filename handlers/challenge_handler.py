@@ -1,7 +1,6 @@
 ﻿from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ConversationHandler, CallbackContext
 from utils import check_identical_engagement, fetch_live_engagements, check_use_of_special, add_special, send_openai_request, fetch_goal_status, get_database_connection
-import asyncio
 
 
 HANDLE_RESPONSE = 1
