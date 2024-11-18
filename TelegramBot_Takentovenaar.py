@@ -93,7 +93,7 @@ try:
         'chat_id': 'BIGINT',
         'total_goals': 'INTEGER DEFAULT 0',
         'completed_goals': 'INTEGER DEFAULT 0',
-        'weekly_goals_left': 'INTEGER DEFAULT 4', 
+        'weekly_goals_left': 'INTEGER DEFAULT 3', 
         'score': 'INTEGER DEFAULT 0',
         'today_goal_status': "TEXT DEFAULT 'not set'",
         'set_time': 'TIMESTAMP',  

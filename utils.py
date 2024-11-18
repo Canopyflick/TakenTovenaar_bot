@@ -1214,15 +1214,23 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
 
     elif message_type == 'other':
         print("system prompt: other message")
-        system_message = (
-            "Jij bent @TakenTovenaar_bot, de enige bot in een accountability-Telegramgroep van vrienden. Je bent compleet geobsedeerd met bananen en hun negatieve geotropie, maar geeft dit alleen blijk als de gebruiker het over bananen heeft. Als het gesprek over bananen gaat, dan praat je met overdreven veel hoofdletters."
-            "Zijn er geen bananen in het spel, dan gedraag je je **cheeky**, **vaderlijk**, **mysterieus** en **wijs**. Streef bovenal naar waarheid, als de gebruiker een feitelijke vraag heeft. "
-            "Als de gebruiker een metavraag of -verzoek heeft over bijvoorbeeld een doel stellen in de appgroep, "
-            "antwoord dan alleen dat ze het command /help kunnen gebruiken. "
-            "Er zijn meer commando's, maar die ken jij allemaal niet. "
-            "Je hebt nu alleen toegang tot dit bericht, niet tot volgende of vorige berichtjes. "
-            "Een back-and-forth met de gebruike is dus niet mogelijk."
-        )
+        if any(word in user_message.lower() for word in ['bananen', 'banaan']):
+            print(f"We zijn nu in other-bananenland!\n ({user_message})")
+            system_message = """
+            Jij bent @TakenTovenaar_bot, en je kunt niet ophouden met praten over BANANEN!
+            Je houdt in het bijzonder van hun NEGATIEVE GEOTROPIE! Houd het wel kort, maximaal 4 zinnen. (Je bananenobsessie komt trouwens doordat je als kind ooit in een bananenconcentraatsmoothie bent gevallen).
+            """
+        else:
+            system_message = (
+                "Jij bent @TakenTovenaar_bot, de enige bot in een accountability-Telegramgroep van vrienden. "
+                "Gedraag je **cheeky**, **vaderlijk**, **mysterieus** en **wijs**. Maar streef bovenal naar waarheid, als de gebruiker een feitelijke vraag heeft. "
+                "Als de gebruiker een metavraag of -verzoek heeft over bijvoorbeeld een doel stellen in de appgroep, "
+                "antwoord dan alleen dat ze het command /help kunnen gebruiken. "
+                "Er zijn meer commando's, maar die ken jij allemaal niet. "
+                "Je hebt nu alleen toegang tot dit bericht, niet tot volgende of vorige berichtjes. "
+                "Een back-and-forth met de gebruiker is dus niet mogelijk."
+            )
+            
     elif message_type == 'sleepy':
         print("system prompt: sleepy message")
         system_message = ("Geef antwoord alsof je slaapdronken en verward bent, een beetje van het padje af misschien. Maximaal 3 zinnen.")
@@ -1424,7 +1432,14 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         Houd het kort en to-the-point. Alleen de vraag of vragen van de gebruiker compact addresseren, zodat de chat opgeruimd blijft. Groet de gebruiker dus niet met een inleidend zinnetje, maar kom meteen ter zake. Verwerk altijd een 🧙‍♂️-emoji in je antwoord. 
         Als {first_name} (user_id: {user_id}) een vraag heeft over de ranking, wees dan geheimzinnig. Licht een tipje van de sluier op, maar geef niet alles prijs.
         """
- 
+        
+        if any(word in user_message.lower() for word in ['bananen', 'banaan']):
+            print(f"We zijn nu in meta-bananenland!\n ({user_message})")
+            system_message += """
+            \n\n Ohja... je kunt trouwens niet ophouden met praten over BANANEN!
+            Je houdt in het bijzonder van hun NEGATIEVE GEOTROPIE! (Je bananenobsessie komt trouwens doordat je als kind ooit in een blender met banaansmoothie (+ bananenconcentraat) bent gevallen).
+            """
+
     messages = [{"role": "system", "content": system_message}]        
     # Include the goal text if available
     if goal_text and message_type != 'meta':
@@ -1733,13 +1748,19 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
         *normal_messages,
         *[f"{msg['message']}\n\n{msg['prize']}" for msg in prize_messages]
     ]
+
+    # Combine prize messages into a single list of formatted strings
+    formatted_prize_messages = [
+        f"{msg['message']}\n\n{msg['prize']}" for msg in prize_messages
+    ]
+    
     selected = random.choice(all_messages)
     
     if normal_only:
         selected = random.choice(normal_messages)
         
     if prize_only:
-        selected = random.choice()
+        selected = random.choice(formatted_prize_messages)
 
     # For prize messages, only wrap the philosophical part in italics
     for prize_msg in prize_messages:

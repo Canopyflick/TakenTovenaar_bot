@@ -346,10 +346,10 @@ async def acties_command(update, context):
 async def details_command(update, context):
     details_message = (
         '*Extra uitleg over de acties* 🧙‍♂️\n\n'
-        '⚡ *Boost* je andermans doel, dan krijgen jij en je doelwit *+1* punt als ze het halen.\nHalen zij hun doel die dag niet, dan krijg jij je boost terug.\n\n'
+        '⚡ *Boost* je andermans doel, dan krijgen jij en je doelwit *+1* punt als zij het halen.\nHalen ze hun doel die dag niet, dan krijg jij je boost terug.\n\n'
         '😈 *Challenge* iemand om iets specifieks te doen vandaag. Jij krijgt *+1* punt zodra de uitdaging geaccepteerd wordt, en zij overschrijven hun dagdoel (als ze dat '
-        'al ingesteld hadden). Bij voltooiing krijgen zij *+2* punten. \nAls je met je challenge niemand tagt en ook niemands berichtje beantwoordt, stuur je een _open uitdaging_. Die kan kan dan door de eerste de beste '
-        'worden geaccepteerd.\nWordt je uitdaging níet geaccepteerd, dan kun je hem terugtrekken. Als je dat niet doet, krijg je hem einde dag vanzelf weer terug.\n\n '
+        'al ingesteld hadden). Bij voltooiing krijgen zij *+2* punten. \nAls je met je challenge niemand tagt en ook niemands berichtje beantwoordt, stuur je een _open uitdaging_. Die kan dan door de eerste de beste '
+        'worden geaccepteerd.\nWordt je uitdaging niet geaccepteerd, of geweigerd, dan kun je hem terugtrekken. Als je dat niet doet, krijg je hem morgen vanzelf weer terug.\n\n '
         '🤝 *Link* jouw doel met dat van een ander. Nu moeten jullie allebei je dagdoel halen om *+2* punten bonus pp te verdienen.\nLukt dit '
         'een van beiden niet, betekent dat *-1* punt voor jou (en voor hen geen bonus).\n\n'
     )
@@ -550,6 +550,9 @@ async def ranking_command(update, context):
                 ranking_message += f"{rank}. {first_name}: {score}\n"
 
             # Send the ranking message
+            await asyncio.sleep(1)   
+            await context.bot.send_chat_action(chat_id, action=ChatAction.TYPING)
+            await asyncio.sleep(7)    
             await update.message.reply_text(ranking_message, parse_mode="Markdown")
 
         except Exception as e:
