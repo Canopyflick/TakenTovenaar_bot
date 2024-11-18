@@ -1,6 +1,5 @@
-﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection
+﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection, BERLIN_TZ
 from datetime import datetime, timezone
-from zoneinfo import ZoneInfo
 import json, asyncio, re, random, pprint
 from telegram import Update, MessageEntity
 from telegram.ext import CallbackContext, ContextTypes
@@ -9,35 +8,42 @@ from pydantic import BaseModel
 from handlers.weekly_poll import retrieve_poll_results
 from telegram.constants import ChatAction
 from psycopg2.errors import UniqueViolation
+from telegram.error import TelegramError
+
 
 
 
 # First orchestration: function to analyze any chat message, and check whether it replies to the bot, mentions it, or neither
 async def analyze_message(update, context):
-    if await is_ben_in_chat(update, context):
-        # Check and add the user to the users table if missing, including first_name  
-        try:
-            user_id = update.message.from_user.id
-            chat_id = update.message.chat_id
-            await update_user_record(context, user_id, chat_id)
-        except Exception as e:
-            print(f"Error checking user records in analyze_message: {e}")
-        try:          
-            if update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
-                print("analyze_message > analyze_message_to_bot (Reply)")
-                await analyze_message_to_bot(update, context, type='reply')          
-            elif update.message and '@TakenTovenaar_bot' in update.message.text:
-                print("analyze_message > analyze_message_to_bot (Mention)")
-                await analyze_message_to_bot(update, context)           
-            else:
-                print("analyze_message > analyze_regular_message")
-                await analyze_regular_message(update, context)
-        except Exception as e:
-            await update.message.reply_text("Er ging iets mis in analyze_message(), probeer het later opnieuw.")
-            print(f"Error in analyze_message(): {e}")   
-    else: 
-        await update.message.reply_text("Uhh, hoi... Stiekem ben ik een beetje verlegen. Praat met me in een chat waar Ben bij zit, pas dan voel ik me op mijn gemak 🧙‍♂️\n\n\nPS: je kunt hier wel allerhande boodschappen ter feedback achterlaten, dan geef ik die door aan Ben (#privacy). Denk bijvoorbeeld aan feature requests, kwinkslagen, knuffelbedreigingen, valsspeelbiechten, slaapzakberichten etc.\nPPS: Die laatste verzon ChatGPT. En ik quote: 'Een heel lang bericht, waarin je jezelf zou kunnen verliezen alsof je in een slaapzak kruipt.'")
-        await notify_ben(update, context)
+    try:
+        if await is_ben_in_chat(update, context):
+            # Check and add the user to the users table if missing, including first_name  
+            try:
+                user_id = update.message.from_user.id
+                chat_id = update.message.chat_id
+                await update_user_record(context, user_id, chat_id)
+            except Exception as e:
+                print(f"Error checking user records in analyze_message: {e}")
+            try:          
+                if update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
+                    print("analyze_message > analyze_message_to_bot (Reply)")
+                    await analyze_message_to_bot(update, context, type='reply')          
+                elif update.message and '@TakenTovenaar_bot' in update.message.text:
+                    print("analyze_message > analyze_message_to_bot (Mention)")
+                    await analyze_message_to_bot(update, context)           
+                else:
+                    print("analyze_message > analyze_regular_message")
+                    await analyze_regular_message(update, context)
+            except Exception as e:
+                await update.message.reply_text("Er ging iets mis in analyze_message(), probeer het later opnieuw.")
+                print(f"Error in analyze_message(): {e}")   
+        else: 
+            await update.message.reply_text("Uhh, hoi... Stiekem ben ik een beetje verlegen. Praat met me in een chat waar Ben bij zit, pas dan voel ik me op mijn gemak 🧙‍♂️\n\n\nPS: je kunt hier wel allerhande boodschappen ter feedback achterlaten, dan geef ik die door aan Ben (#privacy). Denk bijvoorbeeld aan feature requests, kwinkslagen, knuffelbedreigingen, valsspeelbiechten, slaapzakberichten etc.\nPPS: Die laatste verzon ChatGPT. En ik quote: 'Een heel lang bericht, waarin je jezelf zou kunnen verliezen alsof je in een slaapzak kruipt.'")
+            await notify_ben(update, context)
+            return
+    except RuntimeError as e:
+        # Catch the RuntimeError from is_ben_in_chat and stop further execution
+        print(f"Runtime error in analyze_message: {e}")
         return
 
     
@@ -86,7 +92,7 @@ async def reset_goal_status(bot, chat_id):
             (chat_id,)
         )
         conn.commit()
-        print("Goal status reset at      :", datetime.now())
+        print("Goal status reset at      :", datetime.now(tz=BERLIN_TZ))
 
         
         # Fetch all engager_ids for live boost engagements (⚡)
@@ -185,7 +191,7 @@ def update_last_reset_time(chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
-        current_time = datetime.now()
+        current_time = datetime.now(tz=BERLIN_TZ)
         cursor.execute(
             """
             INSERT INTO bot_status (chat_id, last_reset_time) VALUES (%s, %s)
@@ -211,7 +217,7 @@ def get_last_reset_time(chat_id):
         result = cursor.fetchone()
         if result is None:
             # If no record exists, insert a default value
-            now = datetime.now()
+            now = datetime.now(tz=BERLIN_TZ)
             default_time = now.replace(hour=2, minute=1, second=0, microsecond=0)
             cursor.execute(
                 "INSERT INTO bot_status (chat_id, last_reset_time) VALUES (%s, %s)",
@@ -503,7 +509,7 @@ async def handle_goal_setting(update, user_id, chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
-        set_time = datetime.now(tz=ZoneInfo("Europe/Berlin"))
+        set_time = datetime.now(tz=BERLIN_TZ)
         cursor.execute('''
                         UPDATE users 
                         SET today_goal_status = 'set',
@@ -579,7 +585,7 @@ async def handle_goal_completion(update, context, user_id, chat_id, goal_text, f
             # Save the reworded past tense goal in the database        
             update_user_goal(user_id, chat_id, goal_text)
 
-            completion_time = datetime.now().strftime("%H:%M")
+            completion_time = datetime.now(tz=BERLIN_TZ).strftime("%H:%M")
             # Update user's goal status and statistics
 
             cursor.execute('''
@@ -1815,15 +1821,24 @@ async def check_chat_owner(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
     
-    # Get chat administrators
-    admins = await context.bot.get_chat_administrators(chat_id)
+    try:
+        # Get chat administrators
+        admins = await context.bot.get_chat_administrators(chat_id)
     
-    # Check if the user is the owner (creator)
-    for admin in admins:
-        if admin.user.id == user_id and admin.status == 'creator':
-            return True
-    return False
-
+        # Check if the user is the owner (creator)
+        for admin in admins:
+            if admin.user.id == user_id and admin.status == 'creator':
+                return True
+        return False
+    except TelegramError as e:
+        print(f"Error fetching chat admins, returned False as a fallback (retry if Ben =)): {e}")
+        if hasattr(update, 'message') and update.message:
+            await update.message.reply_text(
+                "🚫 Ik kon ffkes niet checken of je de eigenaar van deze chat bent. Probeer het later opnieuw 🧙‍♂️"
+            )
+        else:
+            print("No message object available to send a reply.")
+        return False
 
 
 # Function to analyze replies and mentions to bot
@@ -1890,7 +1905,10 @@ async def analyze_message_to_bot(update, context, type='mention'):
             return
         elif classificatie == 'Doelstelling':
             if goals_remaining == 1:
-                await update.message.reply_text("Dit is je laatste dagdoel deze week 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
+                warning_message = await update.message.reply_text("⚠️ Dit is je laatste dagdoel deze week 🧙‍♂️\n_zondag weer vier nieuwe_", parse_mode = "Markdown")
+                await asyncio.sleep(1)
+                # Schedule the deletion of the message as a background task
+                asyncio.create_task(delete_message(context, chat_id, warning_message.message_id, delay=15))
             await handle_goal_setting(update, user_id, chat_id)
             print("analyze_message_to_bot > handle_goal_setting")
         elif classificatie == 'Klaar' and has_goal_today(user_id, chat_id):
@@ -1986,27 +2004,6 @@ async def handle_regular_message(update, context):
             from handlers.reminders import prepare_daily_reminders
             chat_id = update.effective_chat.id
             await prepare_daily_reminders(context, chat_id)
-
-
-
-
-            # # Reset goal status
-            # try:
-            #     conn = get_database_connection()
-            #     cursor = conn.cursor()
-            #     cursor.execute("UPDATE users SET today_goal_status = 'not set', today_goal_text = '' WHERE chat_id = %s", (chat_id))
-            #     # Delete all engagements
-            #     cursor.execute('DELETE FROM engagements WHERE chat_id = %s', (chat_id))
-                
-            #     conn.commit()
-            #     print(f"666 Goal status reset at", datetime.now())
-            #     await context.bot.send_message(chat_id=update.message.chat_id, text="_SCORE STATUS RESET COMPLETE_  🧙‍♂️", parse_mode="Markdown")
-            # except Exception as e:
-            #     conn.rollback()  # Rollback the transaction on error
-            #     print(f"Error: {e}")
-            # finally:
-            #     cursor.close()
-            #     conn.close()
                 
     # reset to testing state: no engagements, 1 broccoli goal            
     elif user_message == '777':
@@ -2023,7 +2020,7 @@ async def handle_regular_message(update, context):
 
 
     # Run poll
-    elif user_message == '888':
+    elif user_message == 'tijdvooreenpoll':
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
             try:
@@ -2138,7 +2135,6 @@ async def handle_regular_message(update, context):
             finally:
                 cursor.close()
                 conn.close()
-            
 
                 
     # Special_type drop 
@@ -2344,7 +2340,7 @@ async def reset_to_testing_state(update: Update, context: ContextTypes.DEFAULT_T
             # Commit the changes
             conn.commit()
 
-            print(f"Testing state reached at {datetime.now()}")
+            print(f"Testing state reached at {datetime.now(tz=BERLIN_TZ)}")
             await context.bot.send_message(
                 chat_id=update.message.chat_id,
                 text="*RESET TO TESTING STATE* 🧙‍♂️",

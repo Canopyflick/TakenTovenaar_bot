@@ -1,8 +1,7 @@
-﻿from TelegramBot_Takentovenaar import get_first_name, get_database_connection
+﻿from TelegramBot_Takentovenaar import get_first_name, get_database_connection, BERLIN_TZ
 from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status, update_user_record
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
-from zoneinfo import ZoneInfo
 import asyncio, random, re
 
 
@@ -118,7 +117,7 @@ async def stats_command(update: Update, context):
             
             if set_time:
                 set_time = set_time[0]
-                set_time_europe = set_time.astimezone(ZoneInfo("Europe/Berlin"))
+                set_time_europe = set_time.astimezone(tz=BERLIN_TZ)
                 formatted_set_time = set_time_europe.strftime("%H:%M")
             live_engagements_engaged = await fetch_live_engagements(chat_id, engaged_id=user_id)
             pending_engagements = await fetch_live_engagements(chat_id, status='pending', engager_id=user_id, engaged_id=user_id)
@@ -316,15 +315,16 @@ async def filosofie_command(update, context):
                 messages = await prepare_openai_messages(update, user_message="onzichtbaar", message_type = 'grandpa quote', goal_text=goal_text)
                 grandpa_quote = await send_openai_request(messages, "gpt-4o")
                 await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-                random_delay = random.uniform(2, 8)
+                random_delay = random.uniform(1, 8)
                 await asyncio.sleep(random_delay)
                 await update.message.reply_text(f"Mijn grootvader zei altijd:\n✨_{grandpa_quote}_ 🧙‍♂️✨", parse_mode="Markdown")
         else:
             await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-            random_delay = random.uniform(2, 5)
+            random_delay = random.uniform(1, 5)
             await asyncio.sleep(random_delay)
             philosophical_message = get_random_philosophical_message(normal_only=True)
             await update.message.reply_text(f'_{philosophical_message}_', parse_mode="Markdown")
+
     except Exception as e:
         print(f"Error in filosofie_command: {e}")
 

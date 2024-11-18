@@ -1,6 +1,6 @@
 ﻿from datetime import timedelta, datetime
 from pydantic import BaseModel
-from TelegramBot_Takentovenaar import client, get_first_name, get_database_connection
+from TelegramBot_Takentovenaar import client, get_first_name, get_database_connection, BERLIN_TZ
 from telegram import Update
 from telegram.ext import ContextTypes
 from telegram.constants import ChatAction
@@ -165,20 +165,24 @@ async def create_weekly_goals_poll(context, chat_id):
 
         # Store the poll in bot_data & in database in case of bot outage
         context.bot_data[poll_id] = poll_message
+        
+        # Define the Berlin timezone
+        current_time = datetime.now(tz=BERLIN_TZ)
 
         cursor.execute("""
             INSERT INTO polls (chat_id, poll_id, message_id, created_at)
-            VALUES (%s, %s, %s, NOW())
-        """, (chat_id, poll_id, message_id))
+            VALUES (%s, %s, %s, %s)
+        """, (chat_id, poll_id, message_id, current_time))
         conn.commit()
         
-        # Schedule a job to retrieve the poll results 10 hours later
+        # Schedule a job to retrieve the poll results 1 hour later
         context.job_queue.run_once(
             retrieve_poll_results,
-            timedelta(minutes=600),
+            timedelta(minutes=60),
             data={"chat_id": chat_id, "message_id": message_id, "poll_id": poll_id}
         )
-        closing_time = datetime.now() + timedelta(minutes=601)
+        closing_time = datetime.now(tz=BERLIN_TZ) + timedelta(minutes=61)
+
         closing_time_formatted = closing_time.strftime('%H:%M')
 
         await asyncio.sleep(2)
@@ -203,7 +207,7 @@ async def create_weekly_goals_poll(context, chat_id):
 async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Updates the poll data in bot_data when a poll update is received."""
     poll = update.poll
-    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_time = datetime.now(tz=BERLIN_TZ).strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{current_time}] update poll pingy in receive_poll()")
     # Update the poll in bot_data
     context.bot_data[poll.id] = poll
@@ -281,7 +285,7 @@ async def retrieve_poll_results(update, context):
         chat_id=chat_id,
         text="Eèèèn... de poll is bij deze dan gesloten. Ik tel de stemmen."
     )
-    asyncio.sleep(2)
+    await asyncio.sleep(2)
     await context.bot.send_message(
         chat_id=chat_id,
         text="🧙‍♂️"

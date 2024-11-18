@@ -6,7 +6,10 @@ from openai import OpenAI
 import asyncio, telegram
 from datetime import datetime, time, timedelta, timezone
 from typing import Union
+from zoneinfo import ZoneInfo
 
+# Define the Berlin timezone
+BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
 print(f"python-telegram-bot version: {telegram.__version__}\n\n")
 
@@ -96,7 +99,7 @@ try:
         'weekly_goals_left': 'INTEGER DEFAULT 3', 
         'score': 'INTEGER DEFAULT 0',
         'today_goal_status': "TEXT DEFAULT 'not set'",
-        'set_time': 'TIMESTAMP',  
+        'set_time': 'TIMESTAMP WITH TIME ZONE',  
         'today_goal_text': "TEXT DEFAULT ''",
         'live_challenge': "TEXT DEFAULT '{}'",
         'inventory': "JSONB DEFAULT '{\"boosts\": 1, \"challenges\": 1, \"links\": 1}'",
@@ -113,8 +116,8 @@ try:
             completed_goals INTEGER DEFAULT 0,
             weekly_goals_left INTEGER DEFAULT 4 CHECK (weekly_goals_left >= 0),       
             score INTEGER DEFAULT 0,
-            today_goal_status TEXT DEFAULT 'not set', -- either 'set', 'not set', or 'Done at TIMESTAMP'
-            set_time TIMESTAMP,       
+            today_goal_status TEXT DEFAULT 'not set', -- either 'set', 'not set', or 'Done at TIMESTAMP WITH TIME ZONE'
+            set_time TIMESTAMP WITH TIME ZONE,       
             today_goal_text TEXT DEFAULT '',
             live_challenge TEXT DEFAULT '{}',
             inventory JSONB DEFAULT '{"boosts": 1, "challenges": 1, "links": 1}',
@@ -125,15 +128,15 @@ try:
     conn.commit()
     
     #2 bot table
-    # Calculate 4:01 AM last night to set that as default last_reset_time
-    now = datetime.now(tz=timezone.utc)
-    unformatted_time = now.replace(hour=3, minute=1, second=0, microsecond=0) - timedelta(days=1)
+    # Set 4:01 am as default last_reset_time
+    now = datetime.now(tz=BERLIN_TZ)
+    unformatted_time = now.replace(hour=4, minute=1, second=0, microsecond=0) - timedelta(days=1)
     four_am_last_night = unformatted_time.strftime('%Y-%m-%d %H:%M:%S')
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS bot_status (
         chat_id BIGINT PRIMARY KEY,
-        last_reset_time TIMESTAMP DEFAULT %s
+        last_reset_time TIMESTAMP WITH TIME ZONE DEFAULT %s
         )
     ''', (four_am_last_night,))
     conn.commit()
@@ -147,7 +150,7 @@ try:
                 engaged_id BIGINT,
                 chat_id BIGINT NOT NULL,
                 special_type TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
                 status TEXT DEFAULT 'live', -- either 'pending', 'live', 'archived_done' or 'archived_unresolved'
                 FOREIGN KEY (engager_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
                 FOREIGN KEY (engaged_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE
@@ -175,7 +178,7 @@ try:
         user_id BIGINT,
         chat_id BIGINT,
         goal_text TEXT NOT NULL,
-        completion_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completion_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         goal_type TEXT NOT NULL DEFAULT 'personal', -- 'personal' or 'challenges'
         challenge_from BIGINT,  -- NULL for personal goals, user_id of challenger for challenges
         FOREIGN KEY (user_id, chat_id) REFERENCES users(user_id, chat_id) ON DELETE CASCADE,
@@ -190,7 +193,7 @@ try:
         chat_id BIGINT NOT NULL,
         poll_id VARCHAR(255) NOT NULL,
         message_id BIGINT NOT NULL,
-        created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
         processed BOOLEAN NOT NULL DEFAULT FALSE,
         PRIMARY KEY (poll_id)
     );
@@ -278,7 +281,10 @@ async def is_ben_in_chat(update, context):
         return False
     except Exception as e:
         print(f"Error checking chat member: {e}")
-        return False
+        # Send a message to notify about the issue
+        await context.bot.send_message(chat_id, f"🚫 Kon even geen Ben-check doen. Probeer opnieuw 🧙‍♂️\n({e})")
+        # Raise a custom exception to stop further execution
+        raise RuntimeError("Ben check could not be completed due to an error.")
 
 # Private message to Ben (test once then delete)
 async def notify_ben(update,context):
@@ -311,27 +317,26 @@ def reset_reminders_on_startup():
 # Setup function 
 async def setup(application):
     try:
-
         reset_reminders_on_startup()
- 
+        
         from utils import scheduled_daily_reset
         # Schedule the daily reset job 
         job_queue = application.job_queue
-        reset_time = time(hour=3, minute=0, second=0)   # +2hs from CET ie 4AM
+        reset_time = time(hour=3, minute=0, second=0, tzinfo=BERLIN_TZ)  
         job_queue.run_daily(scheduled_daily_reset, time=reset_time)
         print(f"\nDaily reset job queue set up successfully at {reset_time}")
         
         # Schedule the daily reminders jobs 
         from handlers.reminders import prepare_daily_reminders
-        reminder_time_early = time(hour=18, minute=19, second=00)   # +2hs from CET ie 19:19
-        reminder_time_late = time(hour=21, minute=22, second=00)    # +2hs from CET ie 22:22
+        reminder_time_early = time(hour=16, minute=42, second=00, tzinfo=BERLIN_TZ)  
+        reminder_time_late = time(hour=22, minute=00, second=00, tzinfo=BERLIN_TZ)     
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_early)
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_late)
         print(f"\nDaily reminders job queues set up successfully at {reminder_time_early} & {reminder_time_late}")
 
         from handlers.weekly_poll import scheduled_weekly_poll
         # Schedule the weekly poll job 
-        poll_time = time(hour=6, minute=16)  # 1hs from CET, ie 7AM
+        poll_time = time(hour=7, minute=7, tzinfo=BERLIN_TZ)
         job_queue.run_daily(
             scheduled_weekly_poll, 
             time=poll_time, 
@@ -342,9 +347,8 @@ async def setup(application):
         from utils import get_last_reset_time
         now = datetime.now(tz=timezone.utc)
 
-        # Define scheduled reset time (4:00 AM CET)
-        # Make reset_time_today timezone-aware in UTC
-        reset_time_today = now.replace(hour=4, minute=0, second=0, microsecond=0, tzinfo=timezone.utc)
+        # Define scheduled reset time 
+        reset_time_today = now.replace(hour=3, minute=0, second=0, microsecond=0, tzinfo=BERLIN_TZ)
 
         # Retrieve all chat IDs from the database
         conn = get_database_connection()
@@ -450,7 +454,7 @@ def main():
         application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd", "goedzo"], gift_command))
         application.add_handler(CommandHandler(["steal", "steel", "sorry", "oeps"], steal_command))
         application.add_handler(CommandHandler(["revert", "neee", "oftochniet"], revert_goal_completion_command))
-        application.add_handler(CommandHandler(["ranking", "tussenstand"], ranking_command))
+        application.add_handler(CommandHandler(["ranking", "tussenstand", "eindstand"], ranking_command))
 
         # Simple engagements: boosts
         application.add_handler(CommandHandler(["boost", 'boosten', "boosting"], boost_command))

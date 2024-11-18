@@ -1,5 +1,5 @@
 ﻿from pydantic import BaseModel, Field
-from TelegramBot_Takentovenaar import client, get_database_connection
+from TelegramBot_Takentovenaar import client, get_database_connection, BERLIN_TZ
 from telegram.constants import ChatAction
 from datetime import datetime, time, timedelta, timezone
 from typing import List, Literal, Optional
@@ -9,9 +9,6 @@ import pytz
 import asyncio, random
 
 from utils import check_chat_owner, fetch_goal_text
-
-cet = pytz.timezone('Europe/Berlin')  # Automatically adjusts for CET/CEST based on the date
-
 
 
 async def prepare_daily_reminders(context, chat_id=None):
@@ -31,8 +28,7 @@ async def prepare_daily_reminders(context, chat_id=None):
         print(f"Error fetching chat_ids in prepare_daily_reminders: {e}")
         return
 
-    # This should actually show CET: the time from the machine where the application is running
-    time_now = datetime.now()
+    time_now = datetime.now(tz=BERLIN_TZ)
     
     # Do the goal_setters nudges first, unless it's after 8, then skip
     if time_now < time_now.replace(hour=20, minute=00, second=0, microsecond=0):
@@ -61,7 +57,7 @@ async def prepare_daily_reminders(context, chat_id=None):
                     "user_id": row[0],
                     "first_name": row[1],
                     "today_goal_text": row[2],
-                    "set_time": (row[3].astimezone(cet) if isinstance(row[3], datetime) else row[3]).isoformat()
+                    "set_time": (row[3].astimezone(BERLIN_TZ) if isinstance(row[3], datetime) else row[3]).isoformat()
                 }
                 for row in goal_completers
             ]
@@ -129,7 +125,7 @@ async def prepare_daily_reminders(context, chat_id=None):
                     await send_daily_reminder(context, chat_id, completion_reminder=completion_reminder)
                 else:
                     # Convert ISO string back to datetime for scheduling
-                    schedule_time = datetime.fromisoformat(completion_reminder.send_later).replace(tzinfo=pytz.timezone("Europe/Berlin")) if completion_reminder.send_later else None
+                    schedule_time = datetime.fromisoformat(completion_reminder.send_later).replace(tz=BERLIN_TZ) if completion_reminder.send_later else None
                     await schedule_daily_reminder(context, chat_id, completion_reminder, schedule_time)
             
         except Exception as e:
@@ -257,7 +253,7 @@ async def fetch_goal_setters(cursor, chat_id):
     - Have set a goal in the past 3 days. (aka: active users)
     """
     print(f"\n\nEn we zijn in fetch_goal_setters\n\n")
-    today = datetime.now().date()
+    today = datetime.now(tz=BERLIN_TZ).date()
     last_3_days = today - timedelta(days=3)
     print(f"last_3_days: {last_3_days}")
     # Calculate remaining days in the week (Sunday inclusive)
@@ -269,10 +265,9 @@ async def fetch_goal_setters(cursor, chat_id):
         FROM users
         WHERE chat_id = %s
         AND weekly_goals_left >= %s
-        AND set_time >= %s
         AND today_goal_status = 'not set'
     '''
-    cursor.execute(query, (chat_id, remaining_days, last_3_days))
+    cursor.execute(query, (chat_id, last_3_days))
     # 3 users would look like this: [(123456,), (789012,), (345678,)]
     
     result = cursor.fetchall()
@@ -305,9 +300,9 @@ async def schedule_daily_reminder(context, chat_id, completion_reminder, schedul
     
         # Get and print the current device (local) time and UTC time
         local_time = datetime.now()
-        utc_time = datetime.now(pytz.timezone.utc)
+        berlin_time = datetime.now(tz=BERLIN_TZ)
         print(f"\nIndividual daily reminder job scheduled successfully in chat {chat_id} for {first_name}, today at {schedule_time}")
-        print(f"(currently: local time {local_time.strftime('%Y-%m-%d %H:%M:%S')}, UTC time {utc_time.strftime('%Y-%m-%d %H:%M:%S')})\n")
+        print(f"(currently: local time {local_time.strftime('%Y-%m-%d %H:%M:%S')}, Berlin time {berlin_time.strftime('%Y-%m-%d %H:%M:%S')})\n")
 
 
 async def is_reminder_scheduled(user_id, chat_id):
