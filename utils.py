@@ -1502,7 +1502,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         messages.append({"role": "user", "content": f"# Het ingestelde doel van de gebruiker\n{first_name}'s doel is: {goal_text}"})
     messages.append({"role": "user", "content": user_content})
 
-    print(f"\n!!!!\n\n!!!!!!\n\Final messages:\n {messages}")
+    print(f"\n!!!!\n\n!!!!!!\nFinal messages:\n {messages}")
     return messages
 
 
