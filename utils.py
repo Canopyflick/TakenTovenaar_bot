@@ -7,7 +7,6 @@ from typing import Literal
 from pydantic import BaseModel
 from handlers.weekly_poll import retrieve_poll_results
 from telegram.constants import ChatAction
-from psycopg2.errors import UniqueViolation
 from telegram.error import TelegramError
 
 
@@ -18,12 +17,14 @@ async def analyze_message(update, context):
     try:
         if await is_ben_in_chat(update, context):
             # Check and add the user to the users table if missing, including first_name  
-            try:
-                user_id = update.message.from_user.id
-                chat_id = update.message.chat_id
-                await update_user_record(context, user_id, chat_id)
-            except Exception as e:
-                print(f"Error checking user records in analyze_message: {e}")
+            chat_type = update.message.chat.type
+            if chat_type in ['group', 'supergroup']:  # Only proceed if it's a group chat
+                try:
+                    user_id = update.message.from_user.id
+                    chat_id = update.message.chat_id
+                    await update_user_record(context, user_id, chat_id)
+                except Exception as e:
+                    print(f"Error checking user records in analyze_message: {e}")
             try:          
                 if update.message.reply_to_message and update.message.reply_to_message.from_user.is_bot:
                     print("analyze_message > analyze_message_to_bot (Reply)")
@@ -72,7 +73,10 @@ async def update_user_record(context, user_id, chat_id):
                 WHERE user_id = %s AND chat_id = %s
             """, (first_name, user_id, chat_id))
             print(f"Updated first_name for user_id: {user_id}, chat_id: {chat_id} to {first_name}")
+        else: 
+            return
         conn.commit()
+
     except Exception as e:
         print(f"Error updating user record: {e}")
     finally:
@@ -137,7 +141,7 @@ async def reset_goal_status(bot, chat_id):
                     deduction = amount *-1
                     escaped_deduction = escape_markdown_v2(deduction)
                     # different logic for links
-                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_{escaped_deduction} punt{'en' if amount != -1 else ''}_"
+                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_{escaped_deduction} punt{'en' if amount != 1 else ''}_"
                                    , parse_mode="MarkdownV2")
                     try:
                         cursor.execute('''
@@ -874,6 +878,11 @@ async def handle_meta_remark(update, context, user_id, chat_id, goal_text, bot_l
     # if not goal_text:
     #     user_has_goal = False
     user_message = update.message.text
+    if bot_last_response:
+        bot_last_response_text = bot_last_response.text if bot_last_response.text else "geen tekst"
+        if "uitreiking door Ben" in bot_last_response_text:
+            print(f"A blocked meta-reponse to:\n {bot_last_response_text}")
+            return
     messages = await prepare_openai_messages(update, user_message, 'meta', goal_text, bot_last_response)
     assistant_response = await send_openai_request(messages, 'gpt-4o')
     await update.message.reply_text(assistant_response)
@@ -887,11 +896,12 @@ async def handle_unclassified_mention(update):
     user_message = update.message.text
     goal_text = fetch_goal_text(update)
     goal_text = goal_text if goal_text else None
-    bot_last_response = update.message.reply_to_message.text if update.message.reply_to_message else None
-    # Make sure Taeke doesn't respond if user responds to a challenge
+    bot_last_response = update.message.reply_to_message if update.message.reply_to_message else None
+    # Make sure Taeke doesn't respond if user responds to a prize message
     if bot_last_response:
-        if "prijsuitreiking door Ben" in bot_last_response:
-            print(f"reponse to:\n {bot_last_response}")
+        bot_last_response_text = bot_last_response.text if bot_last_response.text else "geen tekst"
+        if "uitreiking door Ben" in bot_last_response_text:
+            print(f"A blocked other-reponse to:\n {bot_last_response_text}")
             return
     messages = await prepare_openai_messages(update, user_message, 'other', goal_text, bot_last_response)
     assistant_response = await send_openai_request(messages, "gpt-4o")
@@ -1223,6 +1233,7 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         Als de gebruiker rapporteert dat hun ingestelde doel met succes is afgerond, zoals: 'klaar!', 
         'Gelukt!'. Een eventueel ingesteld doel is ook voorhanden: beoordeel dus of het ingestelde dagdoel compatibel is met hun bericht.
         Als hun doel bijvoorbeeld was om de afwas te doen, dan moet je 'het afdruiprekje is vol' als 'Klaar' classificeren. Maar als hun doel was om 10km te hardlopen, dan niet.
+        Let op: het is NIET jouw taak om te beoordelen of de gebruiker z'n doel af heeft of niet. Kijk alleen wat ze hier zelf over zeggen.
 
         ## Meta
         Als de gebruiker een vraag stelt over jou zelf als bot of over hoe dingen werken in de chatgroep. Voorbeelden van meta-vragen: 
@@ -1301,13 +1312,14 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         ### /help command
          help_message = (
              '*Dit zijn de beschikbare commando\'s*\n'
-             '👋 /start - Begroeting\n'
+             '👋 /start - Uitleg om te beginnen\n'
              '❓/help - Dit lijstje\n'
              '📊 /stats - Je persoonlijke stats\n'
              '🤔 /reset - Pas je dagdoel aan\n'
              '🗑️ /wipe - Wis je gegevens in deze chat\n'
-             '🎒 /inventaris - Acties paraat?\n'
+             '🎒 /inventaris - Bekijk je acties\n'
              '🏹 /acties - Uitleg over acties\n'
+             '🏹 /fittie - Uitleg over acties\n'
              '💭 /filosofie - Laat je inspireren'
          )
 
@@ -1366,6 +1378,10 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
             '- _/boost @Willem_\n\n'
             '- _/challenge @Josefietje om voor 11u weer thuis te zijn voor de koffie_\n\n'
             'Druk op >> /details << voor meer info over acties.\n\n'
+            
+        ### /fittie
+        De gebruiker kan bezwaar maken over iets waar ze het niet mee eens zijn, door /fittie te reageren op een relevant chatberichtje, en/of na /fittie hun case te brengen. Bijvoorbeeld: /fittie ik geloof niet dat Pietje z'n taak echt gedaan heeft.
+        Hierna maakt TakenTovenaar_bot een poll en een openingsstatement, waar de leden democratisch kunnen stemmen over de afloop van deze onenigheid. Het is verder aan de leden zelf om eventuele consequenties daadwerkelijk door te voeren. Hiertoe kan Ben zijn adminrechten gebruiken (punten herverdelen en dergelijke).
 
         ### /details
         details_message = (
@@ -1464,21 +1480,29 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
             Je houdt in het bijzonder van hun NEGATIEVE GEOTROPIE! (Je bananenobsessie komt doordat je als kind ooit in een blender met banaansmoothie (+ bananenconcentraat) bent gevallen).
             """
 
-    messages = [{"role": "system", "content": system_message}]        
+    user_content = f"# Het berichtje van de gebruiker\n{first_name} zegt: {user_message}"
+
+    # No bot_last_response for confused bot, so it gets less info
+    if message_type == 'sleepy':
+        user_content = user_message
+
+        
+    if bot_last_response:
+        print("!er is een bot_last_response!")
+        bot_last_response_user = bot_last_response.from_user.first_name if bot_last_response.from_user else "onbekend"
+        bot_last_response_text = bot_last_response.text if bot_last_response.text else "geen tekst"
+        user_content += f" (Reactie op een eerder bericht van {bot_last_response_user}: {bot_last_response_text})"
+    print(f"\n!!!!\n\n!!!!!!\n\nuser prompt: {user_content}")
+    
+    # Add system and user messages to the OpenAI messages list
+    messages = [{"role": "system", "content": system_message}]
     # Include the goal text if available
     if goal_text and message_type != 'meta':
         print(f"user prompt: Het ingestelde doel van {first_name} is: {goal_text}")
         messages.append({"role": "user", "content": f"# Het ingestelde doel van de gebruiker\n{first_name}'s doel is: {goal_text}"})
-    
-    # Include the user_message, confused bot gets less info
-    if message_type == 'sleepy':
-        user_content = user_message
-    else:
-        user_content = f"# Het berichtje van de gebruiker\n{first_name} zegt: {user_message}"
-    if bot_last_response:
-        user_content += f" (Reactie op: {bot_last_response})"
-    print(f"user prompt: {user_content}")
     messages.append({"role": "user", "content": user_content})
+
+    print(f"\n!!!!\n\n!!!!!!\n\Final messages:\n {messages}")
     return messages
 
 
@@ -1743,13 +1767,13 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
             "message": "Je niet laten prikken door dat stekelige mythische wezen, maar andersom!",
             "prize": "raad het Nederlandse spreekwoord dat hier zo'n beetje is omgedraaid, en win 1 punt"
         },
-        # {
-        #     "message": "De kastanjes in het vuur flikkeren",                                                                            # Message 5
-        #     "prize": "raad het Nederlandse spreekwoord waarvan dit is afgeleid, en verlies 1 punt"
-        # },
         {
-            "message": "Inwoners uit deze stad zijn het staan zat",
-            "prize": "raad de verborgen stad, en win 2 punten"
+            "message": "De kastanjes in het vuur flikkeren",                                                                            # Message 5
+            "prize": "raad het Nederlandse spreekwoord waarvan dit is afgeleid, en verlies 1 punt"
+        },
+        {
+            "message": "Inwoners uit deze gemeente zijn het staan zat",
+            "prize": "raad de verborgen gemeente, en win 2 punten"
         },
         {
             "message": "Welke rij planten zit er in dit huidvraagje verscholen?",                                                       # Message 7
@@ -1762,7 +1786,7 @@ def get_random_philosophical_message(normal_only = False, prize_only = False):
     ]
     
     # New message to append to each prize submessage
-    additional_message = "\n(prijsuitreiking door Ben)"
+    additional_message = "\n(uitreiking door Ben)"
 
     # Loop through each dictionary in the list and modify the 'prize' value
     for prize_message in prize_messages:
@@ -1859,10 +1883,9 @@ async def analyze_message_to_bot(update, context, type='mention'):
         goal_text = fetch_goal_text(update)
         goal_text = goal_text if goal_text else None
         
-        # Check if the message is a reply to the bot
-        bot_last_response = None
-        if type == 'reply':
-            bot_last_response = update.message.reply_to_message.text
+        # Check if the message is a reply 
+        bot_last_response = update.message.reply_to_message if update.message.reply_to_message else None
+        print(f'🐛🐛🐛🐛🐛🐛\nthis is bot_last_response before sending classification message: {bot_last_response}\n🐛🐛🐛🐛🐛🐛')
         
         # Prepare and send OpenAI messages
         class Classificatie(BaseModel):
@@ -1983,7 +2006,7 @@ async def handle_regular_message(update, context):
         await roll_dice(update, context)
 
     # bananen
-    elif any(word in user_message.lower() for word in ["bananen", "banaan", "appel", "fruit", "apen", "aap", "ernie", "lekker", "Raven", "Nino", "dan"]):
+    elif any(word in user_message.lower() for word in ["bananen", "banaan", "appel", "fruit", "apen", "aap", "ernie", "lekker", "Raven", "Nino", "dan", "오년"]):
         reaction = "🍌"
         if "krom" in user_message.lower():
             reaction = "👀"
@@ -2173,6 +2196,44 @@ async def handle_regular_message(update, context):
         if await check_chat_owner(update, context):
             chat_id = update.effective_chat.id
             await add_weekly_goals(update, chat_id)
+
+    elif user_message == '!prijsvraag':
+        if await check_chat_owner(update, context):
+            chat_id = update.effective_chat.id
+            await post_prize(update, context, chat_id)
+
+    elif user_message == '?prijsvraag':
+        if await check_chat_owner(update, context):
+            chat_id = update.effective_chat.id
+            await post_prize(update, context, chat_id, kastanjes=False)
+
+    elif user_message == 'Koreaanse prijsvraag??':
+        if await check_chat_owner(update, context):
+            chat_id = update.effective_chat.id
+            await post_prize(update, context, chat_id, Jimin=True)
+            
+    elif user_message == 'hoelangiseenui?' or user_message == 'Hoe lang duurt het schillen van een ui?':
+        if await check_chat_owner(update, context):
+            chat_id = update.effective_chat.id
+            await post_prize(update, context, chat_id, ui=True)
+
+async def post_prize(update, context, chat_id, kastanjes=True, Jimin=False, ui=False):
+    if ui:
+        await asyncio.sleep(2)
+        await context.bot.send_message(chat_id=chat_id, text="오년", parse_mode="Markdown")
+        return
+    await context.bot.send_message(chat_id=chat_id, text="🧙‍♂️")
+    await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    if Jimin:
+        await asyncio.sleep(4)
+        await context.bot.send_message(chat_id=chat_id, text="✨_양파 하나 까는 데 얼마나 대단한 시간 필요해요?_✨", parse_mode="Markdown")
+        return
+    for i in range(10):
+        message = get_random_philosophical_message(prize_only=True)
+        if kastanjes or "kastanjes" not in message:
+            break
+    await asyncio.sleep(4)
+    await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
 
 
 async def add_weekly_goals(update, chat_id, amount = 4):
@@ -2390,6 +2451,10 @@ async def scheduled_daily_reset(context_or_application, chat_id=None):
             cursor.close()
             conn.close()
             for chat_id in chat_ids:
+                # Exclude private chats (positive chat IDs)
+                if chat_id > 0:
+                    print(f"Skipping private chat for scheduled daily reset {chat_id}")
+                    continue
                 await reset_goal_status(bot, chat_id)
     except Exception as e:
         print(f"Error in scheduled_daily_reset: {e}")

@@ -62,7 +62,7 @@ async def fittie_command(update, context):
 
 
 async def prepare_dispute_poll(update, context, dispute_data):
-    bot_name = 'testtovenaar_bot'    
+    bot_name = 'TakenTovenaar_bot'    
     if not dispute_data:
         await update.message.reply_text("Er is een fout opgetreden bij het verwerken van de fittie 🐛🧙‍♂️")
         return
@@ -104,7 +104,7 @@ async def prepare_dispute_poll(update, context, dispute_data):
                 Of misschien zoekt de indiener van het dispuut gewoon ruzie, of vindt hij zijn doel zo waardevol dat hij extra punten wil, of maakt ze maar een grapje. Alles is mogelijk.
 
                 Jouw taak als rechter is om rechtvaardig de gegevens af te wegen en te presenteren, met de beperkte informatie die je hebt. 
-                Roll with the flow, en probeer de meest faire of anderszins passende oplossingen voor te stellen, in de vorm van het aanleveren van een relevante polltitel en poll-opties bij dit specifieke dispuut.
+                Roll with the flow, en probeer de meest faire of anderszins passende (of grappige) oplossingen voor te stellen, in de vorm van het aanleveren van een relevante polltitel en poll-opties bij dit specifieke dispuut.
 
                 Stel een duidelijke vraag voor de poll op en geef twee of meer antwoordopties waaruit de groepsleden kunnen kiezen. 
                 Er is ook ruimte voor een kort openingsstatement van jou als rechter, over je bedenkingen wat betreft dit specifieke dispuut en de deelnemers. Hier mag je helemaal los gaan, en zelfs partij kiezen, in drie zinnen max. De polldata zelf moeten wel eerlijk en onpartijdig zijn. 
@@ -143,7 +143,7 @@ async def prepare_dispute_poll(update, context, dispute_data):
         # send the poll
         await asyncio.sleep(4)
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
-        random_delay = random.uniform(4, 10)
+        random_delay = random.uniform(3, 10)
         await asyncio.sleep(random_delay)
         poll_message = await context.bot.send_poll(
             chat_id=update.effective_chat.id,

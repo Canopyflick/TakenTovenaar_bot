@@ -26,7 +26,7 @@ async def help_command(update, context):
         '👋 /start - Uitleg om te beginnen\n'
         '❓/help - Dit lijstje\n'
         '📊 /stats - Je persoonlijke stats\n'
-        '🤔 /reset - Pas je doel aan\n'
+        '🤔 /reset - Pas je dagdoel aan\n'
         '🗑️ /wipe - Wis je gegevens\n'
         '🎒 /inventaris - Bekijk je acties\n'
         '🏹 /acties - Uitleg over acties\n'
@@ -305,7 +305,7 @@ async def filosofie_command(update, context):
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
         await asyncio.sleep(4)
         await asyncio.sleep(1)
-        await update.message.reply_text(f'_{philosophical_message}_', parse_mode="Markdown")
+        await update.message.reply_text(f'{philosophical_message}', parse_mode="Markdown")  # (philosophical_message is already italics)
         return
     try:
         user_id = update.effective_user.id
@@ -323,7 +323,7 @@ async def filosofie_command(update, context):
             random_delay = random.uniform(1, 5)
             await asyncio.sleep(random_delay)
             philosophical_message = get_random_philosophical_message(normal_only=True)
-            await update.message.reply_text(f'_{philosophical_message}_', parse_mode="Markdown")
+            await update.message.reply_text(f"{philosophical_message}", parse_mode="Markdown")  # philosophical message is al italics 
 
     except Exception as e:
         print(f"Error in filosofie_command: {e}")
