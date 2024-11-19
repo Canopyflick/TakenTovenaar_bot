@@ -1230,10 +1230,10 @@ async def prepare_openai_messages(update, user_message, message_type, goal_text=
         Elk bericht waaruit blijkt dat de gebruiker van plan is om iets (specifieks) te gaan doen vandaag.
 
         ## Klaar
-        Als de gebruiker rapporteert dat hun ingestelde doel met succes is afgerond, zoals: 'klaar!', 
+        Als de gebruiker rapporteert dat hun ingestelde doel (of challenge) met succes is afgerond, zoals: 'klaar!', 
         'Gelukt!'. Een eventueel ingesteld doel is ook voorhanden: beoordeel dus of het ingestelde dagdoel compatibel is met hun bericht.
         Als hun doel bijvoorbeeld was om de afwas te doen, dan moet je 'het afdruiprekje is vol' als 'Klaar' classificeren. Maar als hun doel was om 10km te hardlopen, dan niet.
-        Let op: het is NIET jouw taak om te beoordelen of de gebruiker z'n doel af heeft of niet. Kijk alleen wat ze hier zelf over zeggen.
+        Let op: het is NIET jouw taak om te beoordelen of de gebruiker z'n doel daadwerkelijk af heeft of niet. Kijk alleen wat ze hier zelf over zeggen.
 
         ## Meta
         Als de gebruiker een vraag stelt over jou zelf als bot of over hoe dingen werken in de chatgroep. Voorbeelden van meta-vragen: 
@@ -2006,7 +2006,7 @@ async def handle_regular_message(update, context):
         await roll_dice(update, context)
 
     # bananen
-    elif any(word in user_message.lower() for word in ["bananen", "banaan", "appel", "fruit", "apen", "aap", "ernie", "lekker", "Raven", "Nino", "dan", "오년"]):
+    elif any(word in user_message.lower() for word in ["bananen", "banaan", "appel", "fruit", "apen", "aap", "ernie", "lekker", "Raven", "Nino", "오년"]):
         reaction = "🍌"
         if "krom" in user_message.lower():
             reaction = "👀"

@@ -1,5 +1,5 @@
 ﻿from TelegramBot_Takentovenaar import get_first_name, get_database_connection, BERLIN_TZ
-from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status, update_user_record
+from utils import add_special, escape_markdown_v2, get_random_philosophical_message, show_inventory, check_chat_owner, check_use_of_special, fetch_live_engagements, fetch_goal_text, has_goal_today, send_openai_request, prepare_openai_messages, fetch_goal_status, update_user_record, MessageEntity
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ChatAction
 import asyncio, random, re
@@ -59,23 +59,46 @@ async def stats_command(update: Update, context):
     user_id = None
     first_name = None 
 
+    user_entities = False
+
     # Check if there are mentions in the message
     if message.entities:
         for entity in message.entities:
-            if entity.type == "text_mention":  # Detect if it's a direct user mention
+            if entity.type == "text_mention" or entity.type == MessageEntity.MENTION:  # Detect if it's a direct user mention / username mention
+                user_entities = True
                 if await check_chat_owner(update, context):
-                    mentioned_user_id = entity.user.id  # Extract the mentioned user's ID
-                    print(f"User ID: {mentioned_user_id}")
-                    user_id = mentioned_user_id
-                    first_name = entity.user.first_name
+                    if entity.type == "text_mention":
+                        mentioned_user_id = entity.user.id  # Extract the mentioned user's ID
+                        print(f"User ID: {mentioned_user_id}")
+                        user_id = mentioned_user_id
+                        first_name = entity.user.first_name
+                    else:
+                        username = message.text[entity.offset + 1:entity.offset + entity.length]
+                        if username == context.bot.username:
+                            print(f"Cannot present stats for Bot")
+                            return
+                        else:
+                            try:
+                                # Use the get_chat method to get the user details
+                                user = await context.bot.get_chat(f'@{username}')  # This will return a Chat object
+                                if user.type == "private":  # Ensure it's a user and not a group or channel
+                                    mentioned_user_id = user.id  # Extract the user ID
+                                    user_id = mentioned_user_id
+                                    first_name = user.first_name
+                                    print(f"Username mentioned: {username}.\nFetched User ID: {user_id}, Fetched Name: {first_name}")
+                                else:
+                                    print(f"The mentioned username ({username}) is not a user.")
+                            except Exception as e:
+                                print(f"Error fetching user by username {username}: {e}")
                 else:
                     await update.message.reply_text("Dat mag jij niet xx 🧙‍♂️")
                     return
-        
     # Fallback: If no mentions, use the command caller's ID and name
     if user_id is None:
         user_id = update.effective_user.id
         first_name = update.effective_user.first_name
+        if user_entities:
+            first_name += f"\n(want '{username}' niet gevonden)"
         
     # Escape first name for MarkdownV2
     escaped_first_name = escape_markdown_v2(first_name)
