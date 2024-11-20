@@ -56,6 +56,7 @@ async def stats_command(update: Update, context):
         return
         
     message = update.message
+    chat_id = message.chat_id
     user_id = None
     first_name = None 
 
@@ -75,6 +76,7 @@ async def stats_command(update: Update, context):
                     else:
                         username = message.text[entity.offset + 1:entity.offset + entity.length]
                         if username == context.bot.username:
+                            await context.bot.setMessageReaction(chat_id=chat_id, message_id=message.id, reaction="👎")
                             print(f"Cannot present stats for Bot")
                             return
                         else:
@@ -176,7 +178,7 @@ async def stats_command(update: Update, context):
         live_links =  await fetch_live_engagements(chat_id=chat_id, engager_id=user_id)
         if (pending_emojis_2 and "🤝" in pending_emojis_2) or (live_links and "🤝" in live_links):
             # Getting the string that shows the names of the people who you're linking
-            links_string = await get_links_engaged_names(context, user_id, cursor)
+            links_string = await get_links_engaged_names(context, chat_id, user_id, cursor)
             escaped_links_string = escape_markdown_v2(links_string)
             stats_message += f"{escaped_links_string}\n"
             
@@ -236,7 +238,7 @@ async def process_emojis(escaped_emoji_string, escaped_pending_emojis):
     return escaped_combined_string
 
             
-async def get_links_engaged_names(context, engager_id, cursor):
+async def get_links_engaged_names(context, chat_id, engager_id, cursor):
     try:
         # Fetch the engaged_ids where special_type is 'links'
         cursor.execute('''
@@ -244,8 +246,9 @@ async def get_links_engaged_names(context, engager_id, cursor):
             FROM engagements
             WHERE engager_id = %s
             AND special_type = 'links'
+            AND chat_id = %s           
             AND status IN ('live', 'pending');
-        ''', (engager_id,))
+        ''', (engager_id, chat_id,))
         
         engaged_ids = cursor.fetchall()  # This returns a list of tuples
         
@@ -426,7 +429,7 @@ async def steal_command(update, context):
                 return
     else:
         message = get_random_philosophical_message()
-        await update.message.reply_text(message)
+        await update.message.reply_text(message, parse_mode="Markdown")
         
         
 async def revert_goal_completion_command(update, context):

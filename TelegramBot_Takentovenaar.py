@@ -328,8 +328,8 @@ async def setup(application):
         
         # Schedule the daily reminders jobs 
         from handlers.reminders import prepare_daily_reminders
-        reminder_time_early = time(hour=19, minute=30, second=00, tzinfo=BERLIN_TZ)  
-        reminder_time_late = time(hour=22, minute=00, second=00, tzinfo=BERLIN_TZ)     
+        reminder_time_early = time(hour=18, minute=18, second=00, tzinfo=BERLIN_TZ)  
+        reminder_time_late = time(hour=21, minute=21, second=00, tzinfo=BERLIN_TZ)     
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_early)
         job_queue.run_daily(prepare_daily_reminders, time=reminder_time_late)
         print(f"\nDaily reminders job queues set up successfully at {reminder_time_early} & {reminder_time_late}")
@@ -340,9 +340,9 @@ async def setup(application):
         job_queue.run_daily(
             scheduled_weekly_poll, 
             time=poll_time, 
-            days=(2,)  #6 = Sunday??
+            days=(5,)  #6 = Sunday??
         )
-        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every WEDNESDAY??")
+        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday")
 
         from utils import get_last_reset_time
         now = datetime.now(tz=BERLIN_TZ)
@@ -454,7 +454,7 @@ def main():
         application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd", "goedzo"], gift_command))
         application.add_handler(CommandHandler(["steal", "steel", "sorry", "oeps"], steal_command))
         application.add_handler(CommandHandler(["revert", "neee", "oftochniet"], revert_goal_completion_command))
-        application.add_handler(CommandHandler(["ranking", "tussenstand", "eindstand"], ranking_command))
+        application.add_handler(CommandHandler(["ranking", "tussenstand", "eindstand", "puntenoverzicht"], ranking_command))
 
         # Simple engagements: boosts
         application.add_handler(CommandHandler(["boost", 'boosten', "boosting"], boost_command))

@@ -151,6 +151,9 @@ async def create_weekly_goals_poll(context, chat_id):
         # Create poll options, adding number prefixes for easier reference
         poll_options = [f"{i+1}. {goal}" for i, goal in enumerate(selected_goals)]
         
+        await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        await asyncio.sleep(2)
+        
         poll_message = await context.bot.send_poll(
             chat_id=chat_id,
             question="🏆🧙‍♂️ Stem op je favoriete doelen van afgelopen week!",
@@ -178,10 +181,10 @@ async def create_weekly_goals_poll(context, chat_id):
         # Schedule a job to retrieve the poll results 1 hour later
         context.job_queue.run_once(
             retrieve_poll_results,
-            timedelta(minutes=60),
+            timedelta(minutes=609),
             data={"chat_id": chat_id, "message_id": message_id, "poll_id": poll_id}
         )
-        closing_time = datetime.now(tz=BERLIN_TZ) + timedelta(minutes=61)
+        closing_time = datetime.now(tz=BERLIN_TZ) + timedelta(minutes=610)
 
         closing_time_formatted = closing_time.strftime('%H:%M')
 
@@ -388,7 +391,7 @@ async def award_poll_rewards(context, chat_id, top_results):
                 2. Original goals records submitted by users
 
                 Your task is to complete the top-voted PollOptions list, by:
-                - adding descending position keys to rank each PollOption, such that ties are the same position.
+                - adding descending position keys to rank each PollOption, such that ties are the same position, yet no positions .
                 - matching each top-voted goal with the original goals, by mapping it onto the corresponding user_id as found in the original goals list.
                 - adding associated challenge_from_ids to the top-voted goals if available, otherwise default to 0. 
 
@@ -498,7 +501,7 @@ async def award_poll_rewards(context, chat_id, top_results):
         chat_id=chat_id,
         text="🎊")
         await context.bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-        await asyncio.sleep(1)
+        await asyncio.sleep(2)
         await context.bot.send_message(
         chat_id=chat_id,
         text=f"{awards_text}", parse_mode = "Markdown")

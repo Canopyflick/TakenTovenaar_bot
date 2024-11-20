@@ -5,6 +5,7 @@ from datetime import datetime, time, timedelta, timezone
 from typing import List, Literal, Optional
 from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 from utils import handle_goal_completion
+from zoneinfo import ZoneInfo
 import pytz
 import asyncio, random
 
@@ -35,6 +36,8 @@ async def prepare_daily_reminders(context, chat_id=None):
         print(f"Yep het is vroeg genoeg")
         # 2. Fetch goal setters (only selecting user_id) and send them a hardcoded reminder immediately
         for chat_id in chat_ids: 
+            if chat_id > 0:
+                continue
             print(f"chat_id")
             goal_setters = await fetch_goal_setters(cursor, chat_id)
             if goal_setters:
@@ -47,6 +50,8 @@ async def prepare_daily_reminders(context, chat_id=None):
     for chat_id in chat_ids:
         try:
             # 1. Fetch goal completers data
+            conn = get_database_connection()
+            cursor = conn.cursor()
             goal_completers = await fetch_goal_completers(context, cursor, chat_id)
             # Skip if no goal completers
             if not goal_completers:
@@ -90,7 +95,7 @@ async def prepare_daily_reminders(context, chat_id=None):
                     "content": f"""
                     Jij bent TakenTovenaar_bot, actief in een telegramgroep om het stellen van doelen te faciliteren. Je bent cheeky, mysterieus, en bovenal wijs. 
                     Bekijk de aangeleverder data van een of meer gebruikers die eerder vandaag een doel instelden, en bereid per gebruiker een gepersonaliseerde reminder voor ze voor (goal_progress_inquiry), om ze te vragen of ze al klaar zijn met hun doel vandaag. Verwerk hierin altijd een 🧙‍♂️-emoji en een tag van de user: '[{first_name}](tg://user?id={user_id})'.
-                    Los van een passend reminderberichtje, in lijn met het doel dat ze zich vandaag gesteld hadden (today_goal_text), bepaal je ook een geschikte timing van deze reminder. Ofwel nu meteen (send_now), ofwel later vandaag (send_later), direct nadat je denkt dat de gebruiker het doel af moet hebben.
+                    Los van een passend reminderberichtje, in lijn met het doel dat ze zich vandaag gesteld hadden (today_goal_text), bepaal je ook een geschikte timing voor deze reminder. Ofwel nu meteen (send_now), ofwel later vandaag (send_later), direct nadat je denkt dat de gebruiker het doel af moet hebben. Stuur de reminder alleen later als er een specifieke tijd of dagdeel in het doel staat, en het nu nog vroeger is dan dat moment. Bij twijfel: verstuur de reminder gewoon meteen.
                     """
                 },
                 {
@@ -127,7 +132,8 @@ async def prepare_daily_reminders(context, chat_id=None):
                     await send_daily_reminder(context, chat_id, completion_reminder=completion_reminder)
                 else:
                     # Convert ISO string back to datetime for scheduling
-                    schedule_time = datetime.fromisoformat(completion_reminder.send_later).replace(tz=BERLIN_TZ) if completion_reminder.send_later else None
+                    BERLIN_TZ = ZoneInfo("Europe/Berlin")
+                    schedule_time = datetime.fromisoformat(completion_reminder.send_later).astimezone(BERLIN_TZ) if completion_reminder.send_later else None
                     await schedule_daily_reminder(context, chat_id, completion_reminder, schedule_time)
             
         except Exception as e:
@@ -274,6 +280,8 @@ async def fetch_goal_setters(cursor, chat_id):
     """
     Fetch users who need to set new goals based on the criteria:
     - No pending goal for today.
+    - Remaining goals this week >= remaining days this week until Sunday (aka: should set a goal every day if they wanna finish their max amount of daily goals this week).
+    - Have set a goal in the past 3 days. (aka: active users)
     """
     print(f"\n\nEn we zijn in fetch_goal_setters\n\n")
     today = datetime.now(tz=BERLIN_TZ).date()
@@ -287,9 +295,11 @@ async def fetch_goal_setters(cursor, chat_id):
         SELECT user_id
         FROM users
         WHERE chat_id = %s
+        AND weekly_goals_left >= %s
+        AND set_time >= %s
         AND today_goal_status = 'not set'
     '''
-    cursor.execute(query, (chat_id,))
+    cursor.execute(query, (chat_id, remaining_days, last_3_days))
     # 3 users would look like this: [(123456,), (789012,), (345678,)]
     
     result = cursor.fetchall()
