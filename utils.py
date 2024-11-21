@@ -2025,57 +2025,64 @@ async def handle_regular_message(update, context):
             await scheduled_daily_reset(context, chat_id)
             
     elif user_message == '!overzichtje':
-        if await check_chat_owner(update, context):
-            chat_id = update.effective_chat.id
+        chat_id = update.effective_chat.id
 
-            # Query to fetch all active engagements (pending + live)
-            conn = get_database_connection()
-            cursor = conn.cursor()
-            query = '''
-                SELECT 
-                    engaged_user.first_name AS engaged_first_name, 
-                    engager_user.first_name AS engager_first_name,
-                    e.special_type, 
-                    e.status
-                FROM engagements e
-                JOIN users engaged_user 
-                    ON e.engaged_id = engaged_user.user_id 
-                    AND e.chat_id = engaged_user.chat_id
-                JOIN users engager_user 
-                    ON e.engager_id = engager_user.user_id 
-                    AND e.chat_id = engager_user.chat_id
-                WHERE e.chat_id = %s
-                  AND e.status IN ('pending', 'live');
-            '''
+        # Query to fetch all active engagements (pending + live)
+        conn = get_database_connection()
+        cursor = conn.cursor()
+        query = '''
+            SELECT 
+                engaged_user.first_name AS engaged_first_name, 
+                engager_user.first_name AS engager_first_name,
+                e.special_type, 
+                e.status
+            FROM engagements e
+            JOIN users engaged_user 
+                ON e.engaged_id = engaged_user.user_id 
+                AND e.chat_id = engaged_user.chat_id
+            JOIN users engager_user 
+                ON e.engager_id = engager_user.user_id 
+                AND e.chat_id = engager_user.chat_id
+            WHERE e.chat_id = %s
+                AND e.status IN ('pending', 'live');
+        '''
 
-            try:
-                cursor.execute(query, (chat_id,))
-                active_engagements = cursor.fetchall()
+        try:
+            cursor.execute(query, (chat_id,))
+            active_engagements = cursor.fetchall()
 
-                if not active_engagements:
-                    message = "Momenteel nothing to see here 🧙‍♂️"
-                else:
-                    # Format results into a message
-                    message = "🧙‍♂️ Alle actieve acties:\n"
-                    for engagement in active_engagements:
-                        engaged_first_name = engagement[0]
-                        engager_first_name = engagement[1]
-                        special_type = engagement[2]
-                        status = engagement[3]
+            if not active_engagements:
+                message = "Momenteel nothing to see here 🧙‍♂️"
+            else:
+                # Format results into a message
+                message = "🧙‍♂️ *Alle actieve acties:*\n"
+                for engagement in active_engagements:
+                    engaged_first_name = engagement[0]
+                    engager_first_name = engagement[1]
+                    special_type = engagement[2]
+                    status = engagement[3]
+                    
+                    emoji_mapping = {
+                        'boosts': '⚡',
+                        'challenges': '😈',
+                        'links': '🤝'
+                    }
+            
+                    emoji = emoji_mapping.get(special_type, '')
 
-                        message += (
-                            f"- {engaged_first_name} heeft een {special_type} van {engager_first_name}. "
-                            f"(Status: {status})\n"
-                        )
+                    message += (
+                        f"- {engager_first_name} {emoji} {engaged_first_name}"
+                        f" ({status})\n"
+                    )
 
-                # Send the message to the chat
-                await context.bot.send_message(chat_id=chat_id, text=message)
+            # Send the message to the chat
+            await context.bot.send_message(chat_id=chat_id, text=message, parse_mode="Markdown")
 
-            except Exception as e:
-                await context.bot.send_message(chat_id=chat_id, text=f"Fout bij het ophalen van engagements: {e}")
-            finally:
-                cursor.close()
-                conn.close()
+        except Exception as e:
+            await context.bot.send_message(chat_id=chat_id, text=f"Fout bij het ophalen van engagements: {e}")
+        finally:
+            cursor.close()
+            conn.close()
 
 
     
