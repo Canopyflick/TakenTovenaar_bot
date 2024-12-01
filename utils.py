@@ -1,5 +1,5 @@
 ﻿from TelegramBot_Takentovenaar import client, notify_ben, get_first_name, global_bot, is_ben_in_chat, notify_ben, get_database_connection, BERLIN_TZ
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import json, asyncio, re, random, pprint
 from telegram import Update, MessageEntity
 from telegram.ext import CallbackContext, ContextTypes
@@ -87,108 +87,164 @@ async def update_user_record(context, user_id, chat_id):
 
 # nightly or catch-up reset        
 async def reset_goal_status(bot, chat_id):
+    if await check_if_idle(bot, chat_id):
+        print(f"Nightly reset skipped due to group being idle for chat: {chat_id}\n")
+        return
+    else:
+        try:
+            conn = get_database_connection()
+            cursor = conn.cursor()
+            # Reset goal status for all users
+            cursor.execute(
+                "UPDATE users SET today_goal_status = 'not set', today_goal_text = '' WHERE chat_id = %s",
+                (chat_id,)
+            )
+            conn.commit()
+            print("Goal status reset at      :", datetime.now(tz=BERLIN_TZ))
+
+        
+            # Fetch all engager_ids for live boost engagements (⚡)
+            cursor.execute('''
+                SELECT DISTINCT engager_id
+                FROM engagements
+                WHERE status = 'live' AND chat_id = %s
+            ''', (chat_id,))
+            live_engagers = cursor.fetchall()
+
+            # Iterate over each live boost engagement
+            # Process each engager for each type separately
+            for engager_id_tuple in live_engagers:
+                engager_id = engager_id_tuple[0]
+                print('UHHH 🐛🐛🐛🐛🐛🐛🐛🐛🐛🐛')
+                print(dir(bot))
+                engager_name = await get_first_name(bot, user_id=engager_id)
+                escaped_engager_name = escape_markdown_v2(engager_name)
+                # Check if the engager has live engagements using fetch_live_engagements
+                live_engagements = await fetch_live_engagements(chat_id, engager_id=engager_id)
+                if live_engagements:
+                    if "⚡" in live_engagements:
+                        # If there are live boosts, return them to the engager
+                        amount = live_engagements.count("⚡")
+                        await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'boosts', amount = amount)
+                        amount_plus = f"+{amount}"
+                        escaped_amount = escape_markdown_v2(amount_plus)
+                        await bot.send_message(chat_id=chat_id, text =f"Boost van {escaped_engager_name} bleef gisteren {amount} maal onverzilverd 🧙‍♂️\n_{escaped_amount}⚡ terug naar [{escaped_engager_name}](tg://user?id={engager_id})_", parse_mode="MarkdownV2")
+                    pending_engagements = await fetch_live_engagements(chat_id, 'pending', engager_id=engager_id)
+                    if pending_engagements:
+                        if "😈" in pending_engagements:
+                            amount = pending_engagements.count("😈")
+                            await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'challenges', amount = amount)
+                            amount_plus = f"+{amount}"
+                            escaped_amount = escape_markdown_v2(amount_plus)
+                            await bot.send_message(chat_id=chat_id, text =f"Challenge van {escaped_engager_name} werd gisteren {amount} maal niet geaccepteerd 🧙‍♂️\n_{escaped_amount}😈 terug naar [{escaped_engager_name}](tg://user?id={engager_id})_"
+                                           , parse_mode="MarkdownV2")
+                        amount = 0
+                    if "🤝" in live_engagements or (pending_engagements is not None and "🤝" in pending_engagements): 
+                        amount = live_engagements.count("🤝") + pending_engagements.count("🤝")
+                        escaped_amount = escape_markdown_v2(amount)
+                        deduction = amount *-1
+                        escaped_deduction = escape_markdown_v2(deduction)
+                        # different logic for links
+                        await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_{escaped_deduction} punt{'en' if amount != 1 else ''}_"
+                                       , parse_mode="MarkdownV2")
+                        try:
+                            cursor.execute('''
+                                UPDATE users
+                                SET score = score - %s
+                                WHERE user_id = %s AND chat_id = %s           
+                            ''', (amount, engager_id, chat_id,))
+                            conn.commit()
+                        except Exception as e:
+                            print(f"Error subtracting points for pending and live links for {chat_id}: {e}")
+                            conn.rollback()
+                        print("! ! ! live links upon nightly reset\n\nwerken ze ?!???!")
+                
+        except Exception as e:
+            print(f"Error resetting goal for {chat_id} status: {e}")
+            conn.rollback()   
+        try:
+            cursor.execute('''
+                UPDATE engagements
+                SET status = 'archived_unresolved'
+                WHERE status IN ('live', 'pending') AND chat_id = %s           
+            ''', (chat_id,))
+            conn.commit()
+        except Exception as e:
+            print(f"Error archiving engagements for {chat_id}: {e}")
+            conn.rollback()
+        finally:
+            cursor.close()
+            conn.close()    
+        
+        # Update the last reset time
+        update_last_reset_time(chat_id)
+
+        # Send reset message
+        morning_emojis = ["🌅", "🌄"]
+        random_morning_emoji = random.choice(morning_emojis)
+        if random.random() < 0.05:
+                random_morning_emoji = "🧙‍♂️"
+        if random.random() < 0.02:
+            random_morning_emoji = "🍆" 
+        await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
+        await bot.send_chat_action(chat_id, action=ChatAction.TYPING)
+        await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
+        message = get_random_philosophical_message()
+        await bot.send_message(chat_id=chat_id, text=message, parse_mode = "Markdown")
+        await asyncio.sleep(3)
+        await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
+
+
+async def check_if_idle(bot, chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
-        # Reset goal status for all users
+
+
+        # Get the current timestamp
+        now = datetime.now(tz=BERLIN_TZ)
+        forty_eight_hours_ago = now - datetime.timedelta(hours=48)
+        
+        # Query to check if any goals have been set in the last 48 hours
         cursor.execute(
-            "UPDATE users SET today_goal_status = 'not set', today_goal_text = '' WHERE chat_id = %s",
+            """
+            SELECT COUNT(*)
+            FROM users
+            WHERE chat_id = %s
+            AND set_time >= %s;
+            """,
+            (chat_id,  forty_eight_hours_ago)
+        )
+        
+        recent_goals_count = cursor.fetchone()[0]
+
+        # Query to check if there are any engagements with status 'pending' or 'live'
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM engagements
+            WHERE chat_id = %s
+            AND status IN ('pending', 'live');
+            """,
             (chat_id,)
         )
-        conn.commit()
-        print("Goal status reset at      :", datetime.now(tz=BERLIN_TZ))
-
+        active_engagements_count = cursor.fetchone()[0]
         
-        # Fetch all engager_ids for live boost engagements (⚡)
-        cursor.execute('''
-            SELECT DISTINCT engager_id
-            FROM engagements
-            WHERE status = 'live' AND chat_id = %s
-        ''', (chat_id,))
-        live_engagers = cursor.fetchall()
-
-        # Iterate over each live boost engagement
-        # Process each engager for each type separately
-        for engager_id_tuple in live_engagers:
-            engager_id = engager_id_tuple[0]
-            print('UHHH 🐛🐛🐛🐛🐛🐛🐛🐛🐛🐛')
-            print(dir(bot))
-            engager_name = await get_first_name(bot, user_id=engager_id)
-            escaped_engager_name = escape_markdown_v2(engager_name)
-            # Check if the engager has live engagements using fetch_live_engagements
-            live_engagements = await fetch_live_engagements(chat_id, engager_id=engager_id)
-            if live_engagements:
-                if "⚡" in live_engagements:
-                    # If there are live boosts, return them to the engager
-                    amount = live_engagements.count("⚡")
-                    await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'boosts', amount = amount)
-                    amount_plus = f"+{amount}"
-                    escaped_amount = escape_markdown_v2(amount_plus)
-                    await bot.send_message(chat_id=chat_id, text =f"Boost van {escaped_engager_name} bleef gisteren {amount} maal onverzilverd 🧙‍♂️\n_{escaped_amount}⚡ terug naar [{escaped_engager_name}](tg://user?id={engager_id})_", parse_mode="MarkdownV2")
-                pending_engagements = await fetch_live_engagements(chat_id, 'pending', engager_id=engager_id)
-                if pending_engagements:
-                    if "😈" in pending_engagements:
-                        amount = pending_engagements.count("😈")
-                        await add_special(user_id = engager_id, chat_id = chat_id, special_type = 'challenges', amount = amount)
-                        amount_plus = f"+{amount}"
-                        escaped_amount = escape_markdown_v2(amount_plus)
-                        await bot.send_message(chat_id=chat_id, text =f"Challenge van {escaped_engager_name} werd gisteren {amount} maal niet geaccepteerd 🧙‍♂️\n_{escaped_amount}😈 terug naar [{escaped_engager_name}](tg://user?id={engager_id})_"
-                                       , parse_mode="MarkdownV2")
-                    amount = 0
-                if "🤝" in live_engagements or (pending_engagements is not None and "🤝" in pending_engagements): 
-                    amount = live_engagements.count("🤝") + pending_engagements.count("🤝")
-                    escaped_amount = escape_markdown_v2(amount)
-                    deduction = amount *-1
-                    escaped_deduction = escape_markdown_v2(deduction)
-                    # different logic for links
-                    await bot.send_message(chat_id=chat_id, text =f"Link van [{escaped_engager_name}](tg://user?id={engager_id}) is helaas verbroken 🧙‍♂️\n_{escaped_deduction} punt{'en' if amount != 1 else ''}_"
-                                   , parse_mode="MarkdownV2")
-                    try:
-                        cursor.execute('''
-                            UPDATE users
-                            SET score = score - %s
-                            WHERE user_id = %s AND chat_id = %s           
-                        ''', (amount, engager_id, chat_id,))
-                        conn.commit()
-                    except Exception as e:
-                        print(f"Error subtracting points for pending and live links for {chat_id}: {e}")
-                        conn.rollback()
-                    print("! ! ! live links upon nightly reset\n\nwerken ze ?!???!")
-                
+        print(f'found {recent_goals_count} recent daily goals and {active_engagements_count} pending/live engagements for chat {chat_id}')
+        
+        # Determine if the chat is idle
+        if recent_goals_count == 0 and active_engagements_count == 0:
+            return True  # Chat is idle
+        else:
+            return False  # Chat is active
+        
     except Exception as e:
-        print(f"Error resetting goal for {chat_id} status: {e}")
-        conn.rollback()   
-    try:
-        cursor.execute('''
-            UPDATE engagements
-            SET status = 'archived_unresolved'
-            WHERE status IN ('live', 'pending') AND chat_id = %s           
-        ''', (chat_id,))
-        conn.commit()
-    except Exception as e:
-        print(f"Error archiving engagements for {chat_id}: {e}")
+        print(f"Error checking if chat is idle: {e}")
         conn.rollback()
+        return None
     finally:
         cursor.close()
-        conn.close()    
-        
-    # Update the last reset time
-    update_last_reset_time(chat_id)
-
-    # Send reset message
-    morning_emojis = ["🌅", "🌄"]
-    random_morning_emoji = random.choice(morning_emojis)
-    if random.random() < 0.05:
-            random_morning_emoji = "🧙‍♂️"
-    if random.random() < 0.02:
-        random_morning_emoji = "🍆" 
-    await bot.send_message(chat_id=chat_id, text=f"{random_morning_emoji}")
-    await bot.send_chat_action(chat_id, action=ChatAction.TYPING)
-    await asyncio.sleep(5)  # To leave space for any live engagement resolve messages 
-    message = get_random_philosophical_message()
-    await bot.send_message(chat_id=chat_id, text=message, parse_mode = "Markdown")
-    await asyncio.sleep(3)
-    await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
+        conn.close() 
 
 
 def update_last_reset_time(chat_id):
