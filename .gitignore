@@ -5,3 +5,7 @@ __pycache__/
 .env
 env/
 replace.txt
+bin/
+lib/
+lib64
+pyvenv.cfg
