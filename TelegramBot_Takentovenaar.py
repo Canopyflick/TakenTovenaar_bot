@@ -19,7 +19,13 @@ print(f"python-telegram-bot version: {telegram.__version__}\n\n")
 global_bot: ExtBot = None
 
 def initialize_bot(token: str) -> None:
-    """Initialize the global bot instance with the given token."""
+    bot = Bot(token)
+    try:
+        bot_name = bot.get_me().username
+        print(f"Initialized bot: {bot_name}\n")
+    except Exception as e:
+        print(f"Bot token issue: {e}")
+    """Initialize the global bot instance with the given token."""  # I don't remember why I wanted this but just leaving it in
     global global_bot
     application = ApplicationBuilder().token(token).build()
     global_bot = application.bot
@@ -94,6 +100,7 @@ try:
     desired_columns_users = {
         'user_id': 'BIGINT',
         'chat_id': 'BIGINT',
+        'first_name': "TEXT",
         'total_goals': 'INTEGER DEFAULT 0',
         'completed_goals': 'INTEGER DEFAULT 0',
         'weekly_goals_left': 'INTEGER DEFAULT 3', 
@@ -101,7 +108,7 @@ try:
         'today_goal_status': "TEXT DEFAULT 'not set'",
         'set_time': 'TIMESTAMP WITH TIME ZONE',  
         'today_goal_text': "TEXT DEFAULT ''",
-        'live_challenge': "TEXT DEFAULT '{}'",
+        'live_challenge': "TEXT DEFAULT '{}'",  # not used (anymore)?
         'inventory': "JSONB DEFAULT '{\"boosts\": 1, \"challenges\": 1, \"links\": 1}'",
         'reminder_scheduled':" BOOLEAN DEFAULT False"
     }
@@ -405,13 +412,10 @@ def main():
         if local_flag == True:
             print("Using local Database")
             # Running locally, use local bot token
-            token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN')
             token = os.getenv('LOCAL_TELEGRAM_BOT_TOKEN').strip()  # Strip any extra spaces or newlines
-            print(f"Using testtovenaar: {token}\n")
         else:
             # Running on Heroku, use Heroku bot token
             token = os.getenv('TELEGRAM_BOT_TOKEN')
-            print(f"\nUsing TakenTovenaar: {token}")
             print("Using Heroku Database\n")
 
         if token is None:
