@@ -203,7 +203,7 @@ async def check_if_idle(bot, chat_id):
 
         # Get the current timestamp
         now = datetime.now(tz=BERLIN_TZ)
-        forty_eight_hours_ago = now - datetime.timedelta(hours=48)
+        forty_eight_hours_ago = now - timedelta(hours=48)
         
         # Query to check if any goals have been set in the last 48 hours
         cursor.execute(
@@ -235,6 +235,7 @@ async def check_if_idle(bot, chat_id):
         # Determine if the chat is idle
         if recent_goals_count == 0 and active_engagements_count == 0:
             return True  # Chat is idle
+            print(f"Daily/Catch-up reset skipped for 48h idle chat: {chat_id}")
         else:
             return False  # Chat is active
         
@@ -278,12 +279,13 @@ def get_last_reset_time(chat_id):
         if result is None:
             # If no record exists, insert a default value
             now = datetime.now(tz=BERLIN_TZ)
-            default_time = now.replace(hour=2, minute=1, second=0, microsecond=0)
+            default_time = now.replace(hour=3, minute=0, second=0, microsecond=0)
             cursor.execute(
                 "INSERT INTO bot_status (chat_id, last_reset_time) VALUES (%s, %s)",
                 (chat_id, default_time)
             )            
             conn.commit()
+            print(f"✨🧙‍♂️ Inserted a {default_time} reset time today for new chat: {chat_id}")
             return default_time
         return result[0]
     except Exception as e:
@@ -2557,10 +2559,15 @@ async def scheduled_daily_reset(context_or_application, chat_id=None):
             raise ValueError("Invalid context or application passed to scheduled_daily_reset")
         
         print(f"Type of bot in scheduled_daily_reset: {type(bot)}")
-        # currently always called iterating over specific chat_ids. (But I want to keep the option open to just call it without chat_id, and perform the iteration inside this function)
+        # When called during setup for a catch-up reset, chat iteration happens in setup()
         if chat_id:
-            await reset_goal_status(bot, chat_id)
-            return
+            if chat_id > 0:
+                print(f"Skipping private chat for scheduled daily reset {chat_id}")
+                return
+            else:
+                await reset_goal_status(bot, chat_id)
+                return
+        # When called as a scheduled daily reset job, chat iteration happens here
         else:
             conn = get_database_connection()
             cursor = conn.cursor()
@@ -2573,7 +2580,8 @@ async def scheduled_daily_reset(context_or_application, chat_id=None):
                 if chat_id > 0:
                     print(f"Skipping private chat for scheduled daily reset {chat_id}")
                     continue
-                await reset_goal_status(bot, chat_id)
+                else:
+                    await reset_goal_status(bot, chat_id)
     except Exception as e:
         print(f"Error in scheduled_daily_reset: {e}")
         return

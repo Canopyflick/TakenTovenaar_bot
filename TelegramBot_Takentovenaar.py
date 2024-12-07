@@ -128,17 +128,16 @@ try:
     conn.commit()
     
     #2 bot table
-    # Set 4:01 am as default last_reset_time
+    # Set 3:01 am as default last_reset_time
     now = datetime.now(tz=BERLIN_TZ)
-    unformatted_time = now.replace(hour=4, minute=1, second=0, microsecond=0) - timedelta(days=1)
-    four_am_last_night = unformatted_time.strftime('%Y-%m-%d %H:%M:%S')
+    default_last_reset_time = now.replace(hour=3, minute=1, second=0, microsecond=0)
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS bot_status (
         chat_id BIGINT PRIMARY KEY,
-        last_reset_time TIMESTAMP WITH TIME ZONE DEFAULT %s
-        )
-    ''', (four_am_last_night,))
+        last_reset_time TIMESTAMP WITH TIME ZONE
+    )
+    ''')
     conn.commit()
 
     # 3 engagements table
@@ -363,13 +362,13 @@ async def setup(application):
                 VALUES (%s, %s)
                 ON CONFLICT (chat_id) DO NOTHING
                 """,
-                (chat_id, reset_time_today - timedelta(days=1))  # Initialize with the previous day's reset time
+                (chat_id, reset_time_today)  # Initialize as if it was just reset today, to avoid triggering a catch-up reset
             )
         conn.commit()
         cursor.close()
         conn.close()
 
-        # Check if each chat needs a reset
+        # (set correct timezone, then:) Determine if any chats need a catch-up reset
         for chat_id in chat_ids:
             last_reset = get_last_reset_time(chat_id)
             if last_reset is not None and last_reset.tzinfo is None:
@@ -380,14 +379,14 @@ async def setup(application):
 
             # Determine if a catch-up reset is needed for each chat
             if now >= reset_time_today:
-                # If now is after 4:00 AM today, check if last reset was before 4:00 AM today
+                # If now is after 3:00 AM today, check if last reset was before 3:01 AM today
                 if last_reset is None or last_reset < reset_time_today:
-                    print(f"^ Perform catch-up reset for chat {chat_id} ^\n")
+                    print(f"^ Performing catch-up reset for chat {chat_id} ^\n")
                     await scheduled_daily_reset(application, chat_id)
                 else:
                     print(f"^ No catch-up reset needed for chat {chat_id} ^\n")
             else:
-                # If now is before 4:00 AM today, check if last reset was before 4:00 AM yesterday
+                # If now is before 3:00 AM today, check if last reset was before 3:00 AM yesterday
                 reset_time_yesterday = reset_time_today - timedelta(days=1)
                 if last_reset is None or last_reset < reset_time_yesterday:
                     print(f"^ Performing catch-up reset for chat {chat_id} ^")
