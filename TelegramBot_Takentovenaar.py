@@ -379,9 +379,14 @@ async def setup(application):
         # (set correct timezone, then:) Determine if any chats need a catch-up reset
         for chat_id in chat_ids:
             last_reset = get_last_reset_time(chat_id)
+            print(f"- last reset for chat {chat_id} = {last_reset}
             if last_reset is not None and last_reset.tzinfo is None:
-                last_reset = last_reset.replace(tz=BERLIN_TZ)
-                
+                # Assign UTC timezone if tzinfo is missing (assume stored in UTC)
+                last_reset = last_reset.replace(tzinfo=ZoneInfo("UTC"))
+                # Convert to Berlin timezone
+                last_reset = last_reset.astimezone(BERLIN_TZ)
+                print(f"(Berlin time: {last_reset})")
+
             print(f"\nLast reset time : {last_reset} for chat {chat_id}")
             print(f"Current time    : {now}")
 
