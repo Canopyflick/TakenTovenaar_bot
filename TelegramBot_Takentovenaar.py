@@ -13,8 +13,6 @@ BERLIN_TZ = ZoneInfo("Europe/Berlin")
 
 print(f"python-telegram-bot version: {telegram.__version__}\n\n")
 
-
-
 # Global bot instance
 global_bot: ExtBot = None
 
@@ -138,7 +136,7 @@ try:
     #2 bot table
     # Set 3:01 am as default last_reset_time
     now = datetime.now(tz=BERLIN_TZ)
-    default_last_reset_time = now.replace(hour=3, minute=1, second=0, microsecond=0)
+    default_last_reset_time = now.replace(hour=3, minute=1, second=1, microsecond=1)
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS bot_status (
@@ -379,7 +377,7 @@ async def setup(application):
         # (set correct timezone, then:) Determine if any chats need a catch-up reset
         for chat_id in chat_ids:
             last_reset = get_last_reset_time(chat_id)
-            print(f"- last reset for chat {chat_id} = {last_reset}
+            print(f"- last reset for chat {chat_id} = {last_reset}")
             if last_reset is not None and last_reset.tzinfo is None:
                 # Assign UTC timezone if tzinfo is missing (assume stored in UTC)
                 last_reset = last_reset.replace(tzinfo=ZoneInfo("UTC"))
