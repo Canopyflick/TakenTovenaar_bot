@@ -347,7 +347,7 @@ async def setup(application):
             time=poll_time, 
             days=(5,)  #6 = Sunday??
         )
-        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday")
+        print(f"\nWeekly goals poll job queue set up successfully at {poll_time} every Saturday\n")
 
         from utils import get_last_reset_time
         now = datetime.now(tz=BERLIN_TZ)
