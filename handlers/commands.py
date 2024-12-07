@@ -188,7 +188,7 @@ async def stats_command(update: Update, context):
         try:
             trashbin_button = InlineKeyboardButton("🗑️", callback_data="delete_stats")
             reply_markup = InlineKeyboardMarkup([[trashbin_button]])
-            await update.message.reply_text(stats_message, reply_markup=reply_markup, parse_mode="MarkdownV2")
+            await update.message.reply_text(stats_message, reply_markup=reply_markup, parse_mode="MarkdownV2")      # < < < < <
         except AttributeError as e:
             print("die gekke error weer (jaaa)")
     else:

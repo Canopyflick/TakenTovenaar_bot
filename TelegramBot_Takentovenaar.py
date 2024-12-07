@@ -18,11 +18,6 @@ global_bot: ExtBot = None
 
 def initialize_bot(token: str) -> None:
     bot = Bot(token)
-    try:
-        bot_name = bot.get_me().username
-        print(f"Initialized bot: {bot_name}\n")
-    except Exception as e:
-        print(f"Bot token issue: {e}")
     """Initialize the global bot instance with the given token."""  # I don't remember why I wanted this but just leaving it in
     global global_bot
     application = ApplicationBuilder().token(token).build()
@@ -110,6 +105,7 @@ try:
         'inventory': "JSONB DEFAULT '{\"boosts\": 1, \"challenges\": 1, \"links\": 1}'",
         'reminder_scheduled':" BOOLEAN DEFAULT False"
     }
+
 
     # Create the tables if they don't exist
     #1 users table
@@ -319,8 +315,67 @@ def reset_reminders_on_startup():
     print(f"🕳️ Reset all scheduled reminders flags")
 
 
+def register_handlers(application):
+    from handlers.challenge_handler import challenge_command, handle_challenge_response
+    application.add_handler(CallbackQueryHandler(handle_challenge_response, pattern=r"^(retract|accept|reject)_\d+$"))
+
+    from handlers.reminders import handle_goal_completion_reminder_response
+    application.add_handler(CallbackQueryHandler(handle_goal_completion_reminder_response, pattern=r"^(klaar|nee)_\d+_.+$"))
+
+    from handlers.wipe_handler import create_wipe_handler
+    wipe_conv_handler = create_wipe_handler()
+    application.add_handler(wipe_conv_handler)
+
+    from handlers.commands import start_command, help_command, stats_command, reset_command, filosofie_command, inventory_command, acties_command, gift_command, steal_command, revert_goal_completion_command, ranking_command, boost_command, link_command, details_command
+    # Bind the commands to their respective functions
+    # The ones that show up in /help:
+    application.add_handler(CommandHandler(["start", "begroeting", "begin"], start_command))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("stats", stats_command))
+    application.add_handler(CommandHandler("reset", reset_command))
+    application.add_handler(CommandHandler(["challenge", "uitdagen", "komdanjonge", "waarheiddoenofdurven"], challenge_command))
+    # wipe is in handlers/wipe_handler.py
+    application.add_handler(CommandHandler("filosofie", filosofie_command))
+    application.add_handler(CommandHandler(["inventaris", "inventory"], inventory_command))
+    application.add_handler(CommandHandler(["moves", "engagements", "specials", "engagement", "engoggos", "acties", "actie"], acties_command))
+    application.add_handler(CommandHandler(["details", "movesdetails"], details_command))
+    # the admin commands
+    application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd", "goedzo"], gift_command))
+    application.add_handler(CommandHandler(["steal", "steel", "sorry", "oeps"], steal_command))
+    application.add_handler(CommandHandler(["revert", "neee", "oftochniet"], revert_goal_completion_command))
+    application.add_handler(CommandHandler(["ranking", "tussenstand", "eindstand", "puntenoverzicht"], ranking_command))
+
+    # Simple engagements: boosts
+    application.add_handler(CommandHandler(["boost", 'boosten', "boosting"], boost_command))
+    # Complexer engagements
+    application.add_handler(CommandHandler(["link", "links", "linken"], link_command))
+        
+    # (Weekly) goals poll
+    from utils import analyze_message
+    from handlers.weekly_poll import receive_poll, poll_command
+    application.add_handler(PollHandler(receive_poll))
+    application.add_handler(CommandHandler("poll", poll_command))
+        
+    from handlers.dispute_handler import fittie_command
+    application.add_handler(CommandHandler(["fittie", "oneens", "wachteensff", "nietzosnel"], fittie_command))
+        
+    # Register the CallbackQueryHandler to handle the trashbin click
+    from handlers.commands import handle_trashbin_click
+    application.add_handler(CallbackQueryHandler(handle_trashbin_click, pattern="delete_stats"))
+
+    # Bind the message analysis to any non-command text messages
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
+    # Handler for edited messages
+    application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
+
+
 # Setup function 
 async def setup(application):
+    try:
+        bot_name = await application.bot.get_me()
+        print(f"Initialized bot: {bot_name.username}\n")
+    except Exception as e:
+        print(f"Bot token issue: {e}")
     try:
         reset_reminders_on_startup()
         
@@ -377,15 +432,14 @@ async def setup(application):
         # (set correct timezone, then:) Determine if any chats need a catch-up reset
         for chat_id in chat_ids:
             last_reset = get_last_reset_time(chat_id)
-            print(f"- last reset for chat {chat_id} = {last_reset}")
+            print(f"CHAT: {chat_id}")
             if last_reset is not None and last_reset.tzinfo is None:
                 # Assign UTC timezone if tzinfo is missing (assume stored in UTC)
                 last_reset = last_reset.replace(tzinfo=ZoneInfo("UTC"))
                 # Convert to Berlin timezone
                 last_reset = last_reset.astimezone(BERLIN_TZ)
-                print(f"(Berlin time: {last_reset})")
 
-            print(f"\nLast reset time : {last_reset} for chat {chat_id}")
+            print(f"Last reset time : {last_reset}")
             print(f"Current time    : {now}")
 
             # Determine if a catch-up reset is needed for each chat
@@ -432,59 +486,8 @@ def main():
         application = ApplicationBuilder().token(token).build()
         asyncio.get_event_loop().run_until_complete(setup(application))
 
-        from handlers.challenge_handler import challenge_command, handle_challenge_response
-        application.add_handler(CallbackQueryHandler(handle_challenge_response, pattern=r"^(retract|accept|reject)_\d+$"))
-
-        from handlers.reminders import handle_goal_completion_reminder_response
-        application.add_handler(CallbackQueryHandler(handle_goal_completion_reminder_response, pattern=r"^(klaar|nee)_\d+_.+$"))
-
-        from handlers.wipe_handler import create_wipe_handler
-        wipe_conv_handler = create_wipe_handler()
-        application.add_handler(wipe_conv_handler)
-        
-
-        
-        from handlers.commands import start_command, help_command, stats_command, reset_command, filosofie_command, inventory_command, acties_command, gift_command, steal_command, revert_goal_completion_command, ranking_command, boost_command, link_command, details_command
-        # Bind the commands to their respective functions
-        # The ones that show up in /help:
-        application.add_handler(CommandHandler(["start", "begroeting", "begin"], start_command))
-        application.add_handler(CommandHandler("help", help_command))
-        application.add_handler(CommandHandler("stats", stats_command))
-        application.add_handler(CommandHandler("reset", reset_command))
-        application.add_handler(CommandHandler(["challenge", "uitdagen", "komdanjonge", "waarheiddoenofdurven"], challenge_command))
-        # wipe is in handlers/wipe_handler.py
-        application.add_handler(CommandHandler("filosofie", filosofie_command))
-        application.add_handler(CommandHandler(["inventaris", "inventory"], inventory_command))
-        application.add_handler(CommandHandler(["moves", "engagements", "specials", "engagement", "engoggos", "acties", "actie"], acties_command))
-        application.add_handler(CommandHandler(["details", "movesdetails"], details_command))
-        # the admin commands
-        application.add_handler(CommandHandler(["gift", "give", "cadeautje", "foutje", "geef", "kadootje", "gefeliciteerd", "goedzo"], gift_command))
-        application.add_handler(CommandHandler(["steal", "steel", "sorry", "oeps"], steal_command))
-        application.add_handler(CommandHandler(["revert", "neee", "oftochniet"], revert_goal_completion_command))
-        application.add_handler(CommandHandler(["ranking", "tussenstand", "eindstand", "puntenoverzicht"], ranking_command))
-
-        # Simple engagements: boosts
-        application.add_handler(CommandHandler(["boost", 'boosten', "boosting"], boost_command))
-        # Complexer engagements
-        application.add_handler(CommandHandler(["link", "links", "linken"], link_command))
-        
-        # (Weekly) goals poll
-        from utils import analyze_message
-        from handlers.weekly_poll import receive_poll, poll_command
-        application.add_handler(PollHandler(receive_poll))
-        application.add_handler(CommandHandler("poll", poll_command))
-        
-        from handlers.dispute_handler import fittie_command
-        application.add_handler(CommandHandler(["fittie", "oneens", "wachteensff", "nietzosnel"], fittie_command))
-        
-        # Register the CallbackQueryHandler to handle the trashbin click
-        from handlers.commands import handle_trashbin_click
-        application.add_handler(CallbackQueryHandler(handle_trashbin_click, pattern="delete_stats"))
-
-        # Bind the message analysis to any non-command text messages
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & ~filters.FORWARDED & filters.UpdateType.MESSAGE, analyze_message))
-        # Handler for edited messages
-        application.add_handler(MessageHandler(filters.UpdateType.EDITED_MESSAGE & filters.TEXT & ~filters.COMMAND, print_edit))
+        # Set up handlers
+        register_handlers(application)
 
         # Start the bot
         application.run_polling()
