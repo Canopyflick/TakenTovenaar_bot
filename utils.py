@@ -195,15 +195,29 @@ async def reset_goal_status(bot, chat_id):
         await bot.send_message(chat_id=chat_id, text="*Dagelijkse doelen weggetoverd* 📢🧙‍♂️", parse_mode = "Markdown")
 
 
+
+async def convulated_way_to_calculate_for_skirting_timedelta_error():
+    try:
+        # Get the current timestamp
+        now = datetime.now(tz=BERLIN_TZ)
+
+        # Get 48 hours ago Unix timestamp
+        now_timestamp = now.timestamp()
+        seconds_in_48_hours = 48 * 60 * 60
+        timestamp_48_hours_ago = now_timestamp - seconds_in_48_hours
+
+        # Convert the timestamp back to a datetime object
+        datetime_object = datetime.fromtimestamp(timestamp_48_hours_ago, tz=BERLIN_TZ)
+        return datetime_object
+    except Exception as e:
+        print(f"convulated_way_to_calculate_for_skirting_timedelta_error() gone wrong. Error: {e}")
+
 async def check_if_idle(bot, chat_id):
     try:
         conn = get_database_connection()
         cursor = conn.cursor()
 
-
-        # Get the current timestamp
-        now = datetime.now(tz=BERLIN_TZ)
-        forty_eight_hours_ago = now - timedelta(hours=48)
+        forty_eight_hours_ago = await convulated_way_to_calculate_for_skirting_timedelta_error()
         
         # Query to check if any goals have been set in the last 48 hours
         cursor.execute(
@@ -213,7 +227,7 @@ async def check_if_idle(bot, chat_id):
             WHERE chat_id = %s
             AND set_time >= %s;
             """,
-            (chat_id,  forty_eight_hours_ago)
+            (chat_id, forty_eight_hours_ago)
         )
         
         recent_goals_count = cursor.fetchone()[0]
