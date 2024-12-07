@@ -5,3 +5,4 @@
 - Step 4: Look for profit
 - Step 5: ???
 - Step 6: Find out
+- Step 7: Repeat
