@@ -119,6 +119,7 @@ try:
         CREATE TABLE IF NOT EXISTS users (
             user_id BIGINT,
             chat_id BIGINT,
+            first_name TEXT,       
             total_goals INTEGER DEFAULT 0,
             completed_goals INTEGER DEFAULT 0,
             weekly_goals_left INTEGER DEFAULT 4 CHECK (weekly_goals_left >= 0),       
